@@ -1,0 +1,2 @@
+description = "Search Obsidian Vault"
+prompt = "Please use `obsidian_search_notes` to find notes matching: '{{args}}'. List the matching files and ask if I'd like to read any of them."

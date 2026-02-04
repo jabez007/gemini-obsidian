@@ -1,0 +1,2 @@
+description = "Read today's daily note"
+prompt = "Please retrieve today's daily note using `obsidian_get_daily_note`. Once retrieved, summarize any key tasks or events, and ask if I want to add anything to it."

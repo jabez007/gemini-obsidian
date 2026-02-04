@@ -1,0 +1,2 @@
+description = "Index the vault for Semantic Search"
+prompt = "Please run the `obsidian_rag_index` tool to index the vault for semantic search."

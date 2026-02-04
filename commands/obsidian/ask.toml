@@ -1,0 +1,2 @@
+description = "Ask a question to your Obsidian Vault (RAG)"
+prompt = "Please use `obsidian_rag_query` to find an answer to this question: '{{args}}'. Use the retrieved context to answer thoroughly."
