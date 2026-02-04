@@ -49,4 +49,3 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 
 **User:** "Find the recipe for lasagna."
 **Agent:** `obsidian_search_notes(query="lasagna", vault_path="/Users/me/Vault")`
-

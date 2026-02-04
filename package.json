@@ -1,12 +1,12 @@
 {
   "name": "gemini-obsidian",
   "version": "1.0.0",
-  "description": "",
+  "description": "Obsidian Vault integration with local RAG capabilities",
   "main": "index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "keywords": [],
   "author": "",
