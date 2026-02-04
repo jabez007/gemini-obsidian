@@ -10,6 +10,10 @@ This is a powerful [Gemini CLI](https://github.com/google/gemini-cli) extension 
 - **⚡ Management**: Create, move, rename notes, and safely update YAML frontmatter without breaking formatting.
 - **🔍 Fuzzy Search**: Quickly find files by name or content.
 
+## Demo
+
+![demo.gif](docs/demo.gif)
+
 ## Prerequisites
 
 - **Node.js**: v18 or higher.
@@ -70,10 +74,6 @@ The extension comes with pre-configured slash commands for common workflows:
 | `/obsidian:ask` | Ask a question to your vault using RAG (e.g., `/obsidian:ask "What did I learn about React?"`). |
 | `/obsidian:search` | Fuzzy search for files by name or content. |
 | `/obsidian:index` | Trigger a manual re-index of the vault for semantic search. |
-
-## Demo
-
-![demo.gif](docs/demo.gif)
 
 ## Available Tools
 
