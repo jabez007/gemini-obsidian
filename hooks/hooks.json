@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "AfterTool": [
+      {
+        "matcher": "obsidian_(create|append)_note",
+        "hooks": [
+          {
+            "name": "obsidian-reindex",
+            "type": "command",
+            "command": "node ${extensionPath}/dist/index.js obsidian_rag_index",
+            "description": "Re-indexes the vault after a note is created or modified."
+          }
+        ]
+      }
+    ]
+  }
+}

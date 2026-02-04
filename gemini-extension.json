@@ -1,0 +1,13 @@
+{
+  "name": "gemini-obsidian",
+  "version": "1.0.0",
+  "description": "Obsidian Vault integration with local RAG capabilities",
+  "instructions": "Use these tools to interact with the user's Obsidian vault. You can read notes, list files, search (fuzzy), create/append notes, get daily notes, and use RAG (Retrieval Augmented Generation) to answer questions based on the notes. Always check if a vault path is known; if not, ask the user to provide it or set the OBSIDIAN_VAULT_PATH environment variable.",
+  "hooks": "hooks/hooks.json",
+  "mcpServers": {
+    "gemini-obsidian": {
+      "command": "node",
+      "args": ["${extensionPath}/dist/index.js"]
+    }
+  }
+}
