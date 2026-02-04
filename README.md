@@ -22,23 +22,9 @@ This is a powerful [Gemini CLI](https://github.com/google/gemini-cli) extension 
 
 ## Installation
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/yourusername/gemini-obsidian.git
-    cd gemini-obsidian
-    ```
-
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    npm run build
-    ```
-
-3.  **Link to Gemini CLI**:
-    ```bash
-    # From within the project directory
-    gemini install .
-    ```
+```sh
+gemini extensions install https://github.com/thoreinstein/gemini-obsidian
+```
 
 ## Configuration
 
@@ -51,12 +37,7 @@ export OBSIDIAN_VAULT_PATH="/Users/you/Documents/MyVault"
 ```
 
 **Option 2: Runtime Configuration**
-The first time you use a tool, you can provide the `vault_path`. It will be cached in `~/.gemini-obsidian.config.json`.
-
-You can also set it explicitly via the tool:
-```
-/run obsidian_set_vault path="/Users/you/Documents/MyVault"
-```
+The first time you use a tool, gemini will ask to set `vault_path`. It will be cached in `~/.gemini-obsidian.config.json`.
 
 ## Data Storage & Troubleshooting
 
