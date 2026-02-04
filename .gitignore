@@ -1,0 +1,5 @@
+node_modules
+dist
+.gemini-obsidian-lancedb
+.DS_Store
+*.log
