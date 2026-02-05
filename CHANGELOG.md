@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-02-05
+
+### Fixed
+- Ensure all externalized dependencies are in `dependencies` instead of `devDependencies`.
+
 ## [1.0.2] - 2026-02-05
 
 ### Fixed
