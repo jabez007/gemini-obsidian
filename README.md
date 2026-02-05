@@ -22,9 +22,16 @@ This is a powerful [Gemini CLI](https://github.com/google/gemini-cli) extension 
 
 ## Installation
 
-```sh
-gemini extensions install https://github.com/thoreinstein/gemini-obsidian
-```
+1. **Install via Gemini CLI**:
+   ```sh
+   gemini extensions install https://github.com/thoreinstein/gemini-obsidian
+   ```
+
+2. **Install Native Dependencies**:
+   This extension requires native binaries for semantic search. You **must** run `npm install` inside the extension directory:
+   ```sh
+   cd ~/.gemini/extensions/gemini-obsidian && npm install
+   ```
 
 ## Configuration
 
@@ -41,8 +48,9 @@ The first time you use a tool, gemini will ask to set `vault_path`. It will be c
 
 ## Data Storage & Troubleshooting
 
-- **Vector Index**: The semantic search index is stored locally in a `.gemini-obsidian-lancedb` folder within the extension directory.
-- **Cache Reset**: If you suspect the index is corrupted or want a fresh start, you can manually delete the `.gemini-obsidian-lancedb` folder. The next time you run `/obsidian:index` or `obsidian_rag_index`, it will be recreated.
+- **Vector Index**: The semantic search index is stored locally in `~/.gemini-obsidian-lancedb`.
+- **Module Not Found Error**: If you see an error like `Cannot find module '@lancedb/lancedb'`, it means the native dependencies were not installed. Run `npm install` in the extension directory as shown in the Installation section.
+- **Cache Reset**: If you suspect the index is corrupted or want a fresh start, you can manually delete the `~/.gemini-obsidian-lancedb` folder. The next time you run `/obsidian:index` or `obsidian_rag_index`, it will be recreated.
 - **Logs**: If you encounter issues, check the extension logs. Since this runs as an MCP server, errors are typically output to stderr.
 
 ## Commands
