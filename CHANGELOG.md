@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2026-02-05
+
+### Fixed
+- Bundle `@xenova/transformers` by shimming `import.meta.url` to fix "Connection closed" errors.
+- Add defensive startup check for missing native dependencies (`@lancedb/lancedb`) with clear instructions.
+- Ensure storage path is absolute (~/.gemini-obsidian-lancedb) for consistency.
+
 ## [1.0.4] - 2026-02-05
 
 ### Fixed

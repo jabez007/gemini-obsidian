@@ -14,6 +14,16 @@ import { glob } from 'glob';
 import matter from 'gray-matter';
 import { VaultIndexer } from './rag/store.js';
 
+// Defensive check for native dependencies that are externalized
+try {
+    require.resolve('@lancedb/lancedb');
+} catch (e) {
+    console.error('Error: Required dependency "@lancedb/lancedb" is missing.');
+    console.error('Please run "npm install" in the extension directory:');
+    console.error(path.join(__dirname, '..'));
+    process.exit(1);
+}
+
 let VAULT_PATH: string | null = process.env.OBSIDIAN_VAULT_PATH || null;
 const indexer = new VaultIndexer();
 const CONFIG_PATH = path.join(os.homedir(), '.gemini-obsidian.config.json');

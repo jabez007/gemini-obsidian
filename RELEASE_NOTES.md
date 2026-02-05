@@ -1,10 +1,15 @@
-# Release 1.0.4
+# Release 1.0.5
 
 ## Summary
-This release makes the database storage more robust by using an absolute path in the user's home directory.
+This release focuses on robustness and self-containment. It fixes the "Connection closed" errors by properly bundling transformers and adds defensive checks for native dependencies.
 
 ## Bug Fixes
-- Fixed `ENOENT` error that occurred when the current working directory was deleted (e.g., during a build) by moving the LanceDB storage to `~/.gemini-obsidian-lancedb`.
+- **Bundling:** `@xenova/transformers` is now bundled into the main script. A shim for `import.meta.url` was added to resolve path issues in CommonJS.
+- **Diagnostics:** Added a startup check that detects if `@lancedb/lancedb` is missing from `node_modules` and provides clear instructions on how to fix it.
+- **Consistency:** LanceDB storage is now explicitly absolute (`~/.gemini-obsidian-lancedb`).
 
-# Release 1.0.3
+## Operations
+- Users may need to run `npm install` in the extension directory if they see the new "dependency missing" error.
+
+# Release 1.0.4
 ...
