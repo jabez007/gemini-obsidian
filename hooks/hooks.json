@@ -7,7 +7,7 @@
           {
             "name": "obsidian-reindex",
             "type": "command",
-            "command": "node ${extensionPath}/dist/index.js obsidian_rag_index --file_path \"${toolInput.file_path}\"",
+            "command": "node ${extensionPath}/dist/index.js obsidian_rag_index --hook",
             "description": "Re-indexes only the changed note after it is created or modified."
           }
         ]

@@ -60172,11 +60172,18 @@ function getVaultPath(providedPath) {
         }
         result = matches.join("\n");
       } else if (toolName === "obsidian_rag_index") {
-        const vp = getVaultPath(parsedArgs.vault_path);
-        const fp = parsedArgs.file_path ? String(parsedArgs.file_path) : null;
+        let vp, fp;
+        if (parsedArgs.hook) {
+          const input = JSON.parse(await fs4.readFile(0, "utf-8"));
+          vp = getVaultPath(input.tool_input?.vault_path);
+          fp = input.tool_input?.file_path;
+        } else {
+          vp = getVaultPath(parsedArgs.vault_path);
+          fp = parsedArgs.file_path ? String(parsedArgs.file_path) : null;
+        }
         let res;
         if (fp) {
-          res = await indexer.indexFile(vp, fp);
+          res = await indexer.indexFile(vp, String(fp));
         } else {
           res = await indexer.indexVault(vp);
         }
