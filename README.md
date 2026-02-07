@@ -53,6 +53,37 @@ The first time you use a tool, gemini will ask to set `vault_path`. It will be c
 - **Cache Reset**: If you suspect the index is corrupted or want a fresh start, you can manually delete the `~/.gemini-obsidian-lancedb` folder. The next time you run `/obsidian:index` or `obsidian_rag_index`, it will be recreated.
 - **Logs**: If you encounter issues, check the extension logs. Since this runs as an MCP server, errors are typically output to stderr.
 
+## Indexing Performance Tuning
+
+> [!WARNING]
+> Initial semantic indexing can be time- and resource-intensive, especially on large vaults.
+> For first-time indexing on larger vaults, prefer running indexing directly from the extension directory (outside an active Gemini chat session):
+> `node dist/index.js obsidian_rag_index`
+
+### Initial Indexing Expectations
+
+- Recommended threshold for one-time CLI indexing: vaults with roughly `500+` markdown files.
+- CPU usage can stay high for the full indexing run (multiple cores active).
+- In a real-world test with `~1000` files (`957` notes), indexing produced `13,296` chunks and took about `11 minutes` (`11:01`, ~`374%` CPU).
+
+For large vaults, you can tune indexing throughput and chunk size with environment variables:
+
+- `GEMINI_OBSIDIAN_EMBED_BATCH_SIZE` (default: `48`): Number of chunks embedded per batch.
+- `GEMINI_OBSIDIAN_MIN_CHUNK_CHARS` (default: `40`): Skip very small chunks below this size.
+- `GEMINI_OBSIDIAN_MAX_CHUNK_CHARS` (default: `1800`): Split oversized paragraphs into smaller embedding-safe segments.
+- `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS` (default: `700`): Merge nearby short segments into larger chunks to reduce total embeddings.
+
+Higher `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS` generally improves indexing speed by reducing chunk count, but can reduce retrieval granularity.
+
+Example preset for very large vaults:
+
+```bash
+GEMINI_OBSIDIAN_EMBED_BATCH_SIZE=48 \
+GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS=900 \
+GEMINI_OBSIDIAN_MIN_CHUNK_CHARS=60 \
+node dist/index.js obsidian_rag_index
+```
+
 ## Commands
 
 The extension comes with pre-configured slash commands for common workflows:
