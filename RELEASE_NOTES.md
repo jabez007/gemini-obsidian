@@ -1,3 +1,23 @@
+# Release v1.2.0
+
+## Summary
+This release significantly improves the reliability and performance of indexing for large Obsidian vaults. It introduces incremental persistence, configurable chunking strategies, and a robust fallback mechanism for embedding failures. Additionally, it addresses several critical bugs related to CLI flag handling and hook execution.
+
+## New Features
+- **RAG Indexing Overhaul**:
+  - Implemented incremental persistence to reduce memory pressure during indexing.
+  - Added configurable chunking via environment variables (`GEMINI_OBSIDIAN_MIN_CHUNK_CHARS`, `GEMINI_OBSIDIAN_MAX_CHUNK_CHARS`, `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS`).
+  - Improved paragraph splitting logic to handle oversized segments more gracefully.
+  - Added a fallback mechanism to retry failed embedding batches individually.
+  - Added a TTY-aware progress bar for better visibility during long indexing runs.
+
+## Bug Fixes
+- Fixed CLI argument parsing to correctly handle boolean flags, preventing unintentional full vault re-indexes when using hooks.
+- Switched hook input handling to use `stdin` to prevent shell substitution errors with complex file paths or content.
+
+## Operational Notes
+- Users with large vaults should consult the updated README for performance tuning guidance using the new environment variables.
+
 # Release 1.1.0
 
 ## Summary

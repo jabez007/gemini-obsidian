@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-02-07
+
+### Added
+- feat(rag): overhaul indexing for large vaults and reliability
+
+### Fixed
+- fix: correctly handle boolean flags in CLI and prevent full re-index in hooks
+- fix: use stdin for hook input to avoid shell substitution errors
+
+### Changed
+- chore: ensure dist/ is not ignored
+- chore: update package-lock.json
+
 ## [1.1.0] - 2026-02-05
 
 ### Features
