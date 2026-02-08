@@ -186,11 +186,12 @@ async function readStdin(): Promise<string> {
                 vp = getVaultPath(parsedArgs.vault_path);
                 fp = parsedArgs.file_path ? String(parsedArgs.file_path) : null;
             }
+            const force = parsedArgs.force_reindex === true || parsedArgs.force === true;
             let res;
             if (fp) {
                 res = await indexer.indexFile(vp, String(fp));
             } else {
-                res = await indexer.indexVault(vp);
+                res = await indexer.indexVault(vp, force);
             }
             result = JSON.stringify(res);
         } else if (toolName === 'obsidian_rag_query') {
@@ -393,12 +394,13 @@ async function readStdin(): Promise<string> {
         },
         {
           name: 'obsidian_rag_index',
-          description: 'Index the vault for semantic search (RAG). If file_path is provided, only that file is re-indexed.',
+          description: 'Index the vault for semantic search (RAG). If file_path is provided, only that file is re-indexed. Incremental by default — only re-embeds changed files. Use force_reindex to rebuild from scratch.',
           inputSchema: {
             type: 'object',
             properties: {
               vault_path: { type: 'string', description: 'Optional vault path override' },
               file_path: { type: 'string', description: 'Relative path to a specific note to re-index' },
+              force_reindex: { type: 'boolean', description: 'Force full re-index, ignoring cached file hashes (default: false)' },
             },
           },
         },
@@ -554,11 +556,12 @@ async function readStdin(): Promise<string> {
       if (name === 'obsidian_rag_index') {
           const vp = getVaultPath(args?.vault_path as string);
           const fp = args?.file_path ? String(args.file_path) : null;
+          const force = args?.force_reindex === true;
           let result;
           if (fp) {
               result = await indexer.indexFile(vp, fp);
           } else {
-              result = await indexer.indexVault(vp);
+              result = await indexer.indexVault(vp, force);
           }
           return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       }
