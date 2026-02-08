@@ -3,7 +3,17 @@
 // 1. Defensive check for native dependencies (MUST be first)
 try {
     require.resolve('@lancedb/lancedb');
-    require.resolve('onnxruntime-node');
+    const ortPackagePath = require.resolve('onnxruntime-node/package.json');
+    const ortVersion = require(ortPackagePath).version as string | undefined;
+    const isCompatibleOrt = typeof ortVersion === 'string' && /^1\.14(\.|$)/.test(ortVersion);
+    if (!isCompatibleOrt) {
+      console.error('\n[Gemini Obsidian] Error: Incompatible onnxruntime-node version detected.');
+      console.error(`Installed: ${ortVersion ?? 'unknown'}, required: 1.14.x`);
+      console.error('This project bundles @xenova/transformers 2.17.x, which requires onnxruntime-node 1.14.x.');
+      console.error('Please run:');
+      console.error(`  cd ${require('path').join(__dirname, '..')} && npm install onnxruntime-node@1.14.0 --save-exact\n`);
+      process.exit(1);
+    }
 } catch (e) {
     console.error('\n[Gemini Obsidian] Error: Required native dependencies are missing.');
     console.error('This usually happens if "npm install" was not run or failed.');
