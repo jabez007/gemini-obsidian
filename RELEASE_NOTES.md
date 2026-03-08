@@ -1,3 +1,28 @@
+# Release v1.4.0
+
+## Summary
+This release is a major step forward for `gemini-obsidian`, focusing on security, architecture, and developer productivity. We have implemented critical security hardening to prevent path traversal vulnerabilities, refactored the RAG (Retrieval-Augmented Generation) engine for better maintainability, and introduced powerful new tools for surgical manipulation of Markdown sections. Additionally, a full testing suite and CI/CD pipeline have been established to ensure ongoing stability.
+
+## New Features
+- **Surgical Section Tools**:
+  - `obsidian_replace_section`: Replace the body of a heading without touching the rest of the file.
+  - `obsidian_insert_at_heading`: Insert content at the beginning or end of a specific section.
+  - Enhanced `obsidian_append_daily_log`: Now uses the new section range logic for more robust appending under headings.
+
+- **RAG Refactor**:
+  - Extracted the chunking and embedding logic into a dedicated standalone module (`src/rag/chunking.ts`).
+  - Improved text splitting and segment merging algorithms for more efficient embedding.
+
+## Security Hardening
+- **Path Traversal Protection**: Implemented strict path validation (`getSafeFilePath`) across all tool handlers. This prevents accidental or malicious access to files outside of the defined Obsidian vault boundary.
+
+## Developer Experience & Quality
+- **Testing Suite**: Added a comprehensive unit testing suite using `vitest`, covering chunking, utility functions, and vault operations.
+- **CI/CD**: Integrated GitHub Actions for automated verification of every commit.
+
+## Operational Notes
+- The vault path is now strictly enforced. Ensure your `OBSIDIAN_VAULT_PATH` or the path passed via `obsidian_set_vault` is a valid absolute path.
+
 # Release v1.3.0
 
 ## Summary
@@ -18,49 +43,4 @@ This release focuses on improving the robustness and efficiency of the RAG (Retr
 - If you encounter errors related to `onnxruntime-node` after upgrading, please ensure you run `npm install` in the extension directory to apply the pinned version.
 
 # Release v1.2.0
-
-## Summary
-This release significantly improves the reliability and performance of indexing for large Obsidian vaults. It introduces incremental persistence, configurable chunking strategies, and a robust fallback mechanism for embedding failures. Additionally, it addresses several critical bugs related to CLI flag handling and hook execution.
-
-## New Features
-- **RAG Indexing Overhaul**:
-  - Implemented incremental persistence to reduce memory pressure during indexing.
-  - Added configurable chunking via environment variables (`GEMINI_OBSIDIAN_MIN_CHUNK_CHARS`, `GEMINI_OBSIDIAN_MAX_CHUNK_CHARS`, `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS`).
-  - Improved paragraph splitting logic to handle oversized segments more gracefully.
-  - Added a fallback mechanism to retry failed embedding batches individually.
-  - Added a TTY-aware progress bar for better visibility during long indexing runs.
-
-## Bug Fixes
-- Fixed CLI argument parsing to correctly handle boolean flags, preventing unintentional full vault re-indexes when using hooks.
-- Switched hook input handling to use `stdin` to prevent shell substitution errors with complex file paths or content.
-
-## Operational Notes
-- Users with large vaults should consult the updated README for performance tuning guidance using the new environment variables.
-
-# Release 1.1.0
-
-## Summary
-This release introduces incremental indexing for the Obsidian vault. Instead of re-indexing the entire vault on every note change, the extension now only re-indexes the specific file that was modified or created. This significantly improves performance and responsiveness.
-
-## New Features
-- **Incremental Indexing**: The `obsidian_rag_index` tool now accepts an optional `file_path` argument to re-index a single file.
-- **Enhanced Hooks**: The automated re-indexing hook now utilizes incremental indexing and triggers on frontmatter updates as well as note creation/append.
-
-## Bug Fixes
-- Addressed trailing whitespace issues in `src/rag/store.ts`.
-
-# Release 1.0.4
-
-## Summary
-This release significantly improves the stability and ease of use for the extension. It addresses critical issues with bundling, dependency management, and storage paths.
-
-## Bug Fixes
-- **Robust Installation**: The extension now defensively checks for missing native dependencies at startup and provides clear instructions if `npm install` is needed.
-- **Connection Stability**: Fixed "Connection closed" errors by properly bundling `@xenova/transformers` with a compatibility shim.
-- **Consistent Storage**: The vector database is now stored at `~/.gemini-obsidian-lancedb`, preventing errors when running the extension from different directories.
-
-## Operations
-- If you see an error about missing dependencies (`@lancedb/lancedb`), please run `npm install` inside the extension directory.
-
-# Release 1.0.3
 ...
