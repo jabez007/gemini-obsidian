@@ -145,6 +145,7 @@ export class VaultIndexer {
     const allTexts: string[] = [];
     const allMeta: { id: string; text: string; path: string }[] = [];
     const changedHashes: Record<string, string> = {}; // Hashes of files we are attempting to index
+    const expectedChunkCounts: Record<string, number> = {}; // Expected total chunks per file
     const currentHashes: Record<string, string> = { ...previousHashes }; // Start with old hashes
     const changedPaths: string[] = [];
     let filesRead = 0;
@@ -186,7 +187,9 @@ export class VaultIndexer {
             changedHashes[relativePath] = contentHash;
             changedPaths.push(relativePath);
             const { content: body } = matter(content);
-            return buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+            const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+            expectedChunkCounts[relativePath] = inputs.textsToEmbed.length;
+            return inputs;
           } catch (err) {
             console.error(`Failed to process file ${filePath}:`, err);
             return null;
@@ -231,11 +234,10 @@ export class VaultIndexer {
       return { success: false, message: "No content found to index." };
     }
 
-    // ── Phase 2: Update index ─────────────────────────────────────────
-
     let indexedChunks = 0;
     let tableInitialized = false;
     let table: lancedb.Table | null = null;
+    const persistedChunkCounts: Record<string, number> = {}; // Track how many chunks were successfully stored
 
     // For incremental mode: delete old chunks for changed/deleted files, keep existing table
     if (canIncremental) {
@@ -305,17 +307,16 @@ export class VaultIndexer {
 
         indexedChunks += chunks.length;
         
-        // Track successful files in this persistence batch
-        const successfulPathsInBatch = new Set<string>();
-        for (const c of chunks) successfulPathsInBatch.add(c.path);
-        
-        // Update currentHashes only for fully persisted files
-        for (const p of successfulPathsInBatch) {
-            // Check if all chunks for this path were in the batch or previous batches
-            // (Simpler: mark as successful if we just persisted some of its chunks)
-            // To be precise, we'd need to count chunks per file, but for now we'll mark as current
-            if (changedHashes[p]) {
-                currentHashes[p] = changedHashes[p];
+        // Track successful chunks in this persistence batch per file
+        for (const c of chunks) {
+            const p = c.path;
+            persistedChunkCounts[p] = (persistedChunkCounts[p] || 0) + 1;
+            
+            // If we have now persisted all chunks for this file, update its hash
+            if (persistedChunkCounts[p] === expectedChunkCounts[p]) {
+                if (changedHashes[p]) {
+                    currentHashes[p] = changedHashes[p];
+                }
             }
         }
       };

@@ -42,8 +42,9 @@ describe('VaultIndexer path resolution and storage', () => {
     const indexer = new VaultIndexer();
     await indexer.indexVault(vaultPath, false, workspacePath);
 
-    const expectedDbPath = path.join(workspacePath, '.gemini-obsidian', 'lancedb');
-    const expectedHashPath = path.join(workspacePath, '.gemini-obsidian', 'file-hashes.json');
+    const vaultHash = md5(path.resolve(vaultPath));
+    const expectedDbPath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash, 'lancedb');
+    const expectedHashPath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash, 'file-hashes.json');
 
     const dbExists = await fs.stat(expectedDbPath).then(() => true).catch(() => false);
     const hashExists = await fs.stat(expectedHashPath).then(() => true).catch(() => false);

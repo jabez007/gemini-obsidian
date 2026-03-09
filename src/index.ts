@@ -105,12 +105,10 @@ async function readStdin(): Promise<string> {
 }
 
 (async () => {
-  // Load config if environment variable is not set
-  if (!VAULT_PATH || !WORKSPACE_PATH) {
-      const config = await loadConfig();
-      if (!VAULT_PATH) VAULT_PATH = config.vault_path;
-      if (!WORKSPACE_PATH) WORKSPACE_PATH = config.workspace_path;
-  }
+  // Load config and use env vars as overrides
+  const config = await loadConfig();
+  VAULT_PATH = VAULT_PATH || config.vault_path;
+  WORKSPACE_PATH = WORKSPACE_PATH || config.workspace_path;
 
   // Handle CLI args for one-shot mode
   const args = process.argv.slice(2);
