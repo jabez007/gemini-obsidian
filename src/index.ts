@@ -191,7 +191,7 @@ async function readStdin(): Promise<string> {
             }
             result = matches.join('\n');
         } else if (toolName === 'obsidian_rag_index') {
-            let vp, fp, wp;
+            let vp, fp, wp, hpForce;
             if (parsedArgs.hook) {
                 const inputStr = await readStdin();
                 if (!inputStr) {
@@ -201,12 +201,14 @@ async function readStdin(): Promise<string> {
                 vp = getVaultPath(input.tool_input?.vault_path || VAULT_PATH);
                 fp = input.tool_input?.file_path;
                 wp = getWorkspacePath(input.tool_input?.workspace_path || WORKSPACE_PATH);
+                hpForce = input.tool_input?.force_reindex === true;
             } else {
                 vp = getVaultPath(parsedArgs.vault_path);
                 fp = parsedArgs.file_path ? String(parsedArgs.file_path) : null;
                 wp = getWorkspacePath(parsedArgs.workspace_path);
+                hpForce = false;
             }
-            const force = parsedArgs.force_reindex === true || parsedArgs.force === true;
+            const force = parsedArgs.force_reindex === true || parsedArgs.force === true || hpForce;
             let res;
             if (fp) {
                 res = await indexer.indexFile(vp, String(fp), wp);

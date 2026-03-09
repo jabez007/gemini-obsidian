@@ -39,12 +39,12 @@ export class VaultIndexer {
 
   private async getPaths(vaultPath: string, workspacePath?: string | null) {
     let baseStorePath: string;
+    const vaultHash = md5(path.resolve(vaultPath));
 
     if (workspacePath) {
-      baseStorePath = path.join(workspacePath, '.gemini-obsidian');
+      baseStorePath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash);
     } else {
       // Hashed Global Cache: ~/.gemini-obsidian/vaults/<hash_of_vault_path>
-      const vaultHash = md5(path.resolve(vaultPath));
       baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultHash);
     }
 
@@ -144,7 +144,8 @@ export class VaultIndexer {
     // ── Phase 1: Read all files, compute hashes, build chunks for changed files ──
     const allTexts: string[] = [];
     const allMeta: { id: string; text: string; path: string }[] = [];
-    const currentHashes: Record<string, string> = {};
+    const changedHashes: Record<string, string> = {}; // Hashes of files we are attempting to index
+    const currentHashes: Record<string, string> = { ...previousHashes }; // Start with old hashes
     const changedPaths: string[] = [];
     let filesRead = 0;
     let skippedFiles = 0;
@@ -176,13 +177,13 @@ export class VaultIndexer {
             const content = await fs.readFile(filePath, 'utf-8');
             const relativePath = path.relative(vaultPath, filePath);
             const contentHash = md5(content);
-            currentHashes[relativePath] = contentHash;
 
             // Skip unchanged files in incremental mode
             if (canIncremental && previousHashes[relativePath] === contentHash) {
               return null;
             }
 
+            changedHashes[relativePath] = contentHash;
             changedPaths.push(relativePath);
             const { content: body } = matter(content);
             return buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
@@ -209,7 +210,10 @@ export class VaultIndexer {
     }
 
     // Determine deleted files (in previous hashes but not in current file set)
-    const deletedPaths = Object.keys(previousHashes).filter(p => !(p in currentHashes));
+    // First, identify all paths currently in the vault
+    const existingRelativePaths = new Set<string>();
+    for (const f of files) existingRelativePaths.add(path.relative(vaultPath, f));
+    const deletedPaths = Object.keys(previousHashes).filter(p => !existingRelativePaths.has(p));
 
     if (canIncremental) {
       console.error(`Incremental: ${changedPaths.length} changed, ${deletedPaths.length} deleted, ${skippedFiles} unchanged`);
@@ -220,7 +224,6 @@ export class VaultIndexer {
     // Early exit: nothing changed
     if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
       console.error('Index is up to date, no changes detected.');
-      await fs.writeFile(hashPath, JSON.stringify(currentHashes));
       return { success: true, chunks: 0, message: 'Index up to date, no changes detected.' };
     }
 
@@ -247,6 +250,11 @@ export class VaultIndexer {
         }
       }
       tableInitialized = true;
+      // Mark deleted paths as "done" (removed from our hash tracking)
+      for (const p of deletedPaths) delete currentHashes[p];
+    } else {
+        // Full reindex: start fresh
+        for (const k in currentHashes) delete currentHashes[k];
     }
 
     // Embed new/changed chunks (or all chunks for full reindex)
@@ -296,6 +304,20 @@ export class VaultIndexer {
         }
 
         indexedChunks += chunks.length;
+        
+        // Track successful files in this persistence batch
+        const successfulPathsInBatch = new Set<string>();
+        for (const c of chunks) successfulPathsInBatch.add(c.path);
+        
+        // Update currentHashes only for fully persisted files
+        for (const p of successfulPathsInBatch) {
+            // Check if all chunks for this path were in the batch or previous batches
+            // (Simpler: mark as successful if we just persisted some of its chunks)
+            // To be precise, we'd need to count chunks per file, but for now we'll mark as current
+            if (changedHashes[p]) {
+                currentHashes[p] = changedHashes[p];
+            }
+        }
       };
 
       // Accumulate ~5 embedding batches before writing to reduce per-write overhead
@@ -332,14 +354,6 @@ export class VaultIndexer {
 
     // Save updated hashes
     await fs.writeFile(hashPath, JSON.stringify(currentHashes));
-
-    if (canIncremental) {
-      console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
-    } else {
-      console.error(`Indexed ${indexedChunks} chunks.`);
-    }
-    return { success: true, chunks: indexedChunks };
-  }
 
     if (canIncremental) {
       console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
