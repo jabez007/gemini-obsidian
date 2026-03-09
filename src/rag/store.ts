@@ -28,15 +28,16 @@ interface NoteChunk {
 
 export class VaultIndexer {
   private db: lancedb.Connection | null = null;
-  private table: lancedb.Table | null = null;
-  private dbPath: string | null = null;
-  private hashPath: string | null = null;
+  private currentDbPath: string | null = null;
 
   constructor() {}
 
-  private async initializePaths(vaultPath: string, workspacePath?: string | null) {
-    if (this.dbPath && this.hashPath) return;
+  public reset() {
+    this.db = null;
+    this.currentDbPath = null;
+  }
 
+  private async getPaths(vaultPath: string, workspacePath?: string | null) {
     let baseStorePath: string;
 
     if (workspacePath) {
@@ -47,18 +48,22 @@ export class VaultIndexer {
       baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultHash);
     }
 
-    this.dbPath = path.join(baseStorePath, 'lancedb');
-    this.hashPath = path.join(baseStorePath, 'file-hashes.json');
+    const dbPath = path.join(baseStorePath, 'lancedb');
+    const hashPath = path.join(baseStorePath, 'file-hashes.json');
 
     // Ensure the storage directory exists
     await fs.mkdir(baseStorePath, { recursive: true });
+    
+    return { dbPath, hashPath };
   }
 
   private async getDb(vaultPath: string, workspacePath?: string | null) {
-    if (!this.db) {
-      await this.initializePaths(vaultPath, workspacePath);
-      this.db = await lancedb.connect(this.dbPath!);
+    const { dbPath } = await this.getPaths(vaultPath, workspacePath);
+    if (this.db && this.currentDbPath === dbPath) {
+      return this.db;
     }
+    this.db = await lancedb.connect(dbPath);
+    this.currentDbPath = dbPath;
     return this.db;
   }
 
@@ -66,9 +71,9 @@ export class VaultIndexer {
     const db = await this.getDb(vaultPath, workspacePath);
     const tableNames = await db.tableNames();
     if (tableNames.includes('notes')) {
-      this.table = await db.openTable('notes');
+      return await db.openTable('notes');
     }
-    return this.table;
+    return null;
   }
 
   public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null) {
@@ -90,13 +95,14 @@ export class VaultIndexer {
 
           const db = await this.getDb(vaultPath, workspacePath);
           const tableNames = await db.tableNames();
+          let table: lancedb.Table;
           if (!tableNames.includes('notes')) {
-              this.table = await db.createTable('notes', chunkRows);
+              table = await db.createTable('notes', chunkRows);
           } else {
-              this.table = await db.openTable('notes');
+              table = await db.openTable('notes');
               // Delete old chunks for this file
-              await this.table.delete(`path = '${relativePath.replace(/'/g, "''")}'`);
-              await this.table.add(chunkRows);
+              await table.delete(`path = '${relativePath.replace(/'/g, "''")}'`);
+              await table.add(chunkRows);
           }
           console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
           return { success: true, chunks: chunks.length };
@@ -109,7 +115,7 @@ export class VaultIndexer {
   }
 
   public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null) {
-    await this.initializePaths(vaultPath, workspacePath);
+    const { hashPath } = await this.getPaths(vaultPath, workspacePath);
     const embedder = Embedder.getInstance();
     const db = await this.getDb(vaultPath, workspacePath);
 
@@ -121,7 +127,7 @@ export class VaultIndexer {
     let previousHashes: Record<string, string> = {};
     if (!force) {
       try {
-        previousHashes = JSON.parse(await fs.readFile(this.hashPath!, 'utf-8'));
+        previousHashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
       } catch { /* no previous hashes — will do full index */ }
     }
 
@@ -214,7 +220,7 @@ export class VaultIndexer {
     // Early exit: nothing changed
     if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
       console.error('Index is up to date, no changes detected.');
-      await fs.writeFile(this.hashPath!, JSON.stringify(currentHashes));
+      await fs.writeFile(hashPath, JSON.stringify(currentHashes));
       return { success: true, chunks: 0, message: 'Index up to date, no changes detected.' };
     }
 
@@ -226,17 +232,18 @@ export class VaultIndexer {
 
     let indexedChunks = 0;
     let tableInitialized = false;
+    let table: lancedb.Table | null = null;
 
     // For incremental mode: delete old chunks for changed/deleted files, keep existing table
     if (canIncremental) {
-      this.table = await db.openTable('notes');
+      table = await db.openTable('notes');
       const pathsToDelete = [...changedPaths, ...deletedPaths];
       if (pathsToDelete.length > 0) {
         const DELETE_BATCH = 100;
         for (let i = 0; i < pathsToDelete.length; i += DELETE_BATCH) {
           const batch = pathsToDelete.slice(i, i + DELETE_BATCH);
           const escaped = batch.map(p => `'${p.replace(/'/g, "''")}'`);
-          await this.table.delete(`path IN (${escaped.join(', ')})`);
+          await table.delete(`path IN (${escaped.join(', ')})`);
         }
       }
       tableInitialized = true;
@@ -279,13 +286,13 @@ export class VaultIndexer {
           try {
             await db.dropTable('notes');
           } catch (e) { /* ignore if not exists */ }
-          this.table = await db.createTable('notes', chunkRows);
+          table = await db.createTable('notes', chunkRows);
           tableInitialized = true;
         } else {
-          if (!this.table) {
-            this.table = await db.openTable('notes');
+          if (!table) {
+            table = await db.openTable('notes');
           }
-          await this.table.add(chunkRows);
+          await table.add(chunkRows);
         }
 
         indexedChunks += chunks.length;
@@ -324,7 +331,15 @@ export class VaultIndexer {
     }
 
     // Save updated hashes
-    await fs.writeFile(this.hashPath!, JSON.stringify(currentHashes));
+    await fs.writeFile(hashPath, JSON.stringify(currentHashes));
+
+    if (canIncremental) {
+      console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
+    } else {
+      console.error(`Indexed ${indexedChunks} chunks.`);
+    }
+    return { success: true, chunks: indexedChunks };
+  }
 
     if (canIncremental) {
       console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);

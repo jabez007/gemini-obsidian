@@ -319,6 +319,7 @@ async function readStdin(): Promise<string> {
             const wp = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
             VAULT_PATH = vp;
             WORKSPACE_PATH = wp;
+            indexer.reset();
             await saveConfig(vp, wp);
             result = `Vault path set to: ${vp}` + (wp ? ` with workspace: ${wp}` : '');
         } else {
@@ -562,6 +563,7 @@ async function readStdin(): Promise<string> {
       if (name === 'obsidian_set_vault') {
           VAULT_PATH = String(args?.path);
           WORKSPACE_PATH = args?.workspace_path ? String(args.workspace_path) : null;
+          indexer.reset();
           await saveConfig(VAULT_PATH, WORKSPACE_PATH);
           return { content: [{ type: 'text', text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ''}` }] };
       }
