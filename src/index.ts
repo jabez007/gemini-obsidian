@@ -39,20 +39,28 @@ import { VaultIndexer } from './rag/store.js';
 import { extractWikilinks, findSectionRange, replaceSection, insertAtHeading, getSafeFilePath } from './utils.js';
 
 let VAULT_PATH: string | null = process.env.OBSIDIAN_VAULT_PATH || null;
+let WORKSPACE_PATH: string | null = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
 const indexer = new VaultIndexer();
 const CONFIG_PATH = path.join(os.homedir(), '.gemini-obsidian.config.json');
 
-async function saveConfig(vaultPath: string) {
+async function saveConfig(vaultPath: string, workspacePath?: string | null) {
     try {
-        await fs.writeFile(CONFIG_PATH, JSON.stringify({ vault_path: vaultPath }), 'utf-8');
+        await fs.writeFile(CONFIG_PATH, JSON.stringify({ 
+            vault_path: vaultPath,
+            workspace_path: workspacePath || null
+        }), 'utf-8');
     } catch (e) { console.error("Failed to save config", e); }
 }
 
-async function loadConfig(): Promise<string | null> {
+async function loadConfig(): Promise<{ vault_path: string | null, workspace_path: string | null }> {
     try {
         const data = await fs.readFile(CONFIG_PATH, 'utf-8');
-        return JSON.parse(data).vault_path;
-    } catch { return null; }
+        const config = JSON.parse(data);
+        return {
+            vault_path: config.vault_path || null,
+            workspace_path: config.workspace_path || null
+        };
+    } catch { return { vault_path: null, workspace_path: null }; }
 }
 
 /**
@@ -64,6 +72,13 @@ function getVaultPath(providedPath?: string): string {
     throw new McpError(ErrorCode.InvalidParams, "Vault path is not set. Use obsidian_set_vault or provide 'vault_path' argument.");
   }
   return p;
+}
+
+/**
+ * Helper to get workspace path
+ */
+function getWorkspacePath(providedPath?: string): string | null {
+  return providedPath || WORKSPACE_PATH || null;
 }
 
 async function readStdin(): Promise<string> {
@@ -91,8 +106,10 @@ async function readStdin(): Promise<string> {
 
 (async () => {
   // Load config if environment variable is not set
-  if (!VAULT_PATH) {
-      VAULT_PATH = await loadConfig();
+  if (!VAULT_PATH || !WORKSPACE_PATH) {
+      const config = await loadConfig();
+      if (!VAULT_PATH) VAULT_PATH = config.vault_path;
+      if (!WORKSPACE_PATH) WORKSPACE_PATH = config.workspace_path;
   }
 
   // Handle CLI args for one-shot mode
@@ -174,7 +191,7 @@ async function readStdin(): Promise<string> {
             }
             result = matches.join('\n');
         } else if (toolName === 'obsidian_rag_index') {
-            let vp, fp;
+            let vp, fp, wp;
             if (parsedArgs.hook) {
                 const inputStr = await readStdin();
                 if (!inputStr) {
@@ -183,22 +200,26 @@ async function readStdin(): Promise<string> {
                 const input = JSON.parse(inputStr);
                 vp = getVaultPath(input.tool_input?.vault_path || VAULT_PATH);
                 fp = input.tool_input?.file_path;
+                wp = getWorkspacePath(input.tool_input?.workspace_path || WORKSPACE_PATH);
             } else {
                 vp = getVaultPath(parsedArgs.vault_path);
                 fp = parsedArgs.file_path ? String(parsedArgs.file_path) : null;
+                wp = getWorkspacePath(parsedArgs.workspace_path);
             }
             const force = parsedArgs.force_reindex === true || parsedArgs.force === true;
             let res;
             if (fp) {
-                res = await indexer.indexFile(vp, String(fp));
+                res = await indexer.indexFile(vp, String(fp), wp);
             } else {
-                res = await indexer.indexVault(vp, force);
+                res = await indexer.indexVault(vp, force, wp);
             }
             result = JSON.stringify(res);
         } else if (toolName === 'obsidian_rag_query') {
             const query = String(parsedArgs.query);
             const limit = Number(parsedArgs.limit) || 5;
-            const res = await indexer.search(query, limit);
+            const vp = getVaultPath(parsedArgs.vault_path);
+            const wp = getWorkspacePath(parsedArgs.workspace_path);
+            const res = await indexer.search(query, vp, limit, wp);
             result = res.map((r: any) => `File: ${r.path}\nContent: ${r.text}`).join('\n---\n');
         } else if (toolName === 'obsidian_get_backlinks') {
             const vp = getVaultPath(parsedArgs.vault_path);
@@ -293,6 +314,13 @@ async function readStdin(): Promise<string> {
             }
             await fs.writeFile(filePath, fileContent, 'utf-8');
             result = `Appended to daily note under "${heading}"`;
+        } else if (toolName === 'obsidian_set_vault') {
+            const vp = String(parsedArgs.path);
+            const wp = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
+            VAULT_PATH = vp;
+            WORKSPACE_PATH = wp;
+            await saveConfig(vp, wp);
+            result = `Vault path set to: ${vp}` + (wp ? ` with workspace: ${wp}` : '');
         } else {
             console.error(`Unknown tool: ${toolName}`);
             process.exit(1);
@@ -323,11 +351,12 @@ async function readStdin(): Promise<string> {
       tools: [
         {
           name: 'obsidian_set_vault',
-          description: 'Set the default Obsidian vault path for this session.',
+          description: 'Set the default Obsidian vault path and optional workspace path for this session.',
           inputSchema: {
             type: 'object',
             properties: {
               path: { type: 'string', description: 'Absolute path to the Obsidian vault' },
+              workspace_path: { type: 'string', description: 'Optional absolute path to the workspace root where .gemini-obsidian should be created.' },
             },
             required: ['path'],
           },
@@ -410,6 +439,7 @@ async function readStdin(): Promise<string> {
             type: 'object',
             properties: {
               vault_path: { type: 'string', description: 'Optional vault path override' },
+              workspace_path: { type: 'string', description: 'Optional workspace path override' },
               file_path: { type: 'string', description: 'Relative path to a specific note to re-index' },
               force_reindex: { type: 'boolean', description: 'Force full re-index, ignoring cached file hashes (default: false)' },
             },
@@ -423,6 +453,8 @@ async function readStdin(): Promise<string> {
             properties: {
               query: { type: 'string', description: 'Question or query to ask your notes' },
               limit: { type: 'number', description: 'Number of chunks to retrieve (default 5)' },
+              vault_path: { type: 'string', description: 'Optional vault path override' },
+              workspace_path: { type: 'string', description: 'Optional workspace path override' },
             },
             required: ['query'],
           },
@@ -529,8 +561,9 @@ async function readStdin(): Promise<string> {
     try {
       if (name === 'obsidian_set_vault') {
           VAULT_PATH = String(args?.path);
-          await saveConfig(VAULT_PATH);
-          return { content: [{ type: 'text', text: `Vault path set to: ${VAULT_PATH}` }] };
+          WORKSPACE_PATH = args?.workspace_path ? String(args.workspace_path) : null;
+          await saveConfig(VAULT_PATH, WORKSPACE_PATH);
+          return { content: [{ type: 'text', text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ''}` }] };
       }
       if (name === 'obsidian_list_notes') {
           const vp = getVaultPath(args?.vault_path as string);
@@ -595,20 +628,23 @@ async function readStdin(): Promise<string> {
       }
       if (name === 'obsidian_rag_index') {
           const vp = getVaultPath(args?.vault_path as string);
+          const wp = getWorkspacePath(args?.workspace_path as string);
           const fp = args?.file_path ? String(args.file_path) : null;
           const force = args?.force_reindex === true;
           let result;
           if (fp) {
-              result = await indexer.indexFile(vp, fp);
+              result = await indexer.indexFile(vp, fp, wp);
           } else {
-              result = await indexer.indexVault(vp, force);
+              result = await indexer.indexVault(vp, force, wp);
           }
           return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       }
       if (name === 'obsidian_rag_query') {
           const query = String(args?.query);
           const limit = Number(args?.limit) || 5;
-          const results = await indexer.search(query, limit);
+          const vp = getVaultPath(args?.vault_path as string);
+          const wp = getWorkspacePath(args?.workspace_path as string);
+          const results = await indexer.search(query, vp, limit, wp);
           const formatted = results.map((r: any) => 
               `---\nFile: ${r.path}\nRelevance: ${r._distance}\nContent: ${r.text}\n---`
           ).join('\n');

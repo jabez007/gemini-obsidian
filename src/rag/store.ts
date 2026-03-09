@@ -19,9 +19,6 @@ function chunkingOptionsFromEnv(): ChunkingOptions {
   return { minChunkChars: min, maxChunkChars: max, targetChunkChars: target };
 }
 
-const DB_PATH = path.join(os.homedir(), '.gemini-obsidian-lancedb');
-const HASH_PATH = path.join(os.homedir(), '.gemini-obsidian-file-hashes.json');
-
 interface NoteChunk {
   id: string;
   path: string;
@@ -32,18 +29,41 @@ interface NoteChunk {
 export class VaultIndexer {
   private db: lancedb.Connection | null = null;
   private table: lancedb.Table | null = null;
+  private dbPath: string | null = null;
+  private hashPath: string | null = null;
 
   constructor() {}
 
-  private async getDb() {
+  private async initializePaths(vaultPath: string, workspacePath?: string | null) {
+    if (this.dbPath && this.hashPath) return;
+
+    let baseStorePath: string;
+
+    if (workspacePath) {
+      baseStorePath = path.join(workspacePath, '.gemini-obsidian');
+    } else {
+      // Hashed Global Cache: ~/.gemini-obsidian/vaults/<hash_of_vault_path>
+      const vaultHash = md5(path.resolve(vaultPath));
+      baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultHash);
+    }
+
+    this.dbPath = path.join(baseStorePath, 'lancedb');
+    this.hashPath = path.join(baseStorePath, 'file-hashes.json');
+
+    // Ensure the storage directory exists
+    await fs.mkdir(baseStorePath, { recursive: true });
+  }
+
+  private async getDb(vaultPath: string, workspacePath?: string | null) {
     if (!this.db) {
-      this.db = await lancedb.connect(DB_PATH);
+      await this.initializePaths(vaultPath, workspacePath);
+      this.db = await lancedb.connect(this.dbPath!);
     }
     return this.db;
   }
 
-  private async getTable() {
-    const db = await this.getDb();
+  private async getTable(vaultPath: string, workspacePath?: string | null) {
+    const db = await this.getDb(vaultPath, workspacePath);
     const tableNames = await db.tableNames();
     if (tableNames.includes('notes')) {
       this.table = await db.openTable('notes');
@@ -51,59 +71,7 @@ export class VaultIndexer {
     return this.table;
   }
 
-  private async createOrGetTable(data?: any[]) {
-    const db = await this.getDb();
-    const tableNames = await db.tableNames();
-
-    if (tableNames.includes('notes')) {
-        this.table = await db.openTable('notes');
-        if (data && data.length > 0) {
-            await this.table.add(data);
-        }
-    } else {
-        if (!data || data.length === 0) {
-            // Cannot create empty table easily without schema in some versions,
-            // but let's wait until we have data.
-            return null;
-        }
-        this.table = await db.createTable('notes', data);
-    }
-    return this.table;
-  }
-
-  private async embedWithFallback(
-    embedder: Embedder,
-    texts: string[],
-    meta: { id: string; text: string; path: string }[]
-  ): Promise<NoteChunk[]> {
-    if (texts.length === 0) return [];
-
-    try {
-      const vectors = await embedder.embedBatch(texts);
-      return meta.slice(0, vectors.length).map((item, idx) => ({
-        ...item,
-        vector: vectors[idx]
-      }));
-    } catch (batchErr) {
-      console.error(`Failed to embed batch of ${texts.length} chunks; retrying one-by-one:`, batchErr);
-    }
-
-    const recovered: NoteChunk[] = [];
-    for (let i = 0; i < texts.length; i++) {
-      try {
-        const vector = await embedder.embed(texts[i]);
-        recovered.push({
-          ...meta[i],
-          vector
-        });
-      } catch (singleErr) {
-        console.error(`Failed to embed chunk ${meta[i]?.id ?? i}:`, singleErr);
-      }
-    }
-    return recovered;
-  }
-
-  public async indexFile(vaultPath: string, relativePath: string) {
+  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null) {
     const embedder = Embedder.getInstance();
     const filePath = getSafeFilePath(vaultPath, relativePath);
 
@@ -120,7 +88,7 @@ export class VaultIndexer {
           }
           const chunkRows = chunks as unknown as Record<string, unknown>[];
 
-          const db = await this.getDb();
+          const db = await this.getDb(vaultPath, workspacePath);
           const tableNames = await db.tableNames();
           if (!tableNames.includes('notes')) {
               this.table = await db.createTable('notes', chunkRows);
@@ -140,9 +108,10 @@ export class VaultIndexer {
     }
   }
 
-  public async indexVault(vaultPath: string, force: boolean = false) {
+  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null) {
+    await this.initializePaths(vaultPath, workspacePath);
     const embedder = Embedder.getInstance();
-    const db = await this.getDb();
+    const db = await this.getDb(vaultPath, workspacePath);
 
     // Find all markdown files
     const files = await glob('**/*.md', { cwd: vaultPath, absolute: true });
@@ -152,7 +121,7 @@ export class VaultIndexer {
     let previousHashes: Record<string, string> = {};
     if (!force) {
       try {
-        previousHashes = JSON.parse(await fs.readFile(HASH_PATH, 'utf-8'));
+        previousHashes = JSON.parse(await fs.readFile(this.hashPath!, 'utf-8'));
       } catch { /* no previous hashes — will do full index */ }
     }
 
@@ -245,7 +214,7 @@ export class VaultIndexer {
     // Early exit: nothing changed
     if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
       console.error('Index is up to date, no changes detected.');
-      await fs.writeFile(HASH_PATH, JSON.stringify(currentHashes));
+      await fs.writeFile(this.hashPath!, JSON.stringify(currentHashes));
       return { success: true, chunks: 0, message: 'Index up to date, no changes detected.' };
     }
 
@@ -355,7 +324,7 @@ export class VaultIndexer {
     }
 
     // Save updated hashes
-    await fs.writeFile(HASH_PATH, JSON.stringify(currentHashes));
+    await fs.writeFile(this.hashPath!, JSON.stringify(currentHashes));
 
     if (canIncremental) {
       console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
@@ -365,8 +334,8 @@ export class VaultIndexer {
     return { success: true, chunks: indexedChunks };
   }
 
-  public async search(query: string, limit: number = 5) {
-    const table = await this.getTable();
+  public async search(query: string, vaultPath: string, limit: number = 5, workspacePath?: string | null) {
+    const table = await this.getTable(vaultPath, workspacePath);
     if (!table) {
         return [];
     }
@@ -379,5 +348,37 @@ export class VaultIndexer {
         .toArray();
 
     return results;
+  }
+
+  private async embedWithFallback(
+    embedder: Embedder,
+    texts: string[],
+    meta: { id: string; text: string; path: string }[]
+  ): Promise<NoteChunk[]> {
+    if (texts.length === 0) return [];
+
+    try {
+      const vectors = await embedder.embedBatch(texts);
+      return meta.slice(0, vectors.length).map((item, idx) => ({
+        ...item,
+        vector: vectors[idx]
+      }));
+    } catch (batchErr) {
+      console.error(`Failed to embed batch of ${texts.length} chunks; retrying one-by-one:`, batchErr);
+    }
+
+    const recovered: NoteChunk[] = [];
+    for (let i = 0; i < texts.length; i++) {
+      try {
+        const vector = await embedder.embed(texts[i]);
+        recovered.push({
+          ...meta[i],
+          vector
+        });
+      } catch (singleErr) {
+        console.error(`Failed to embed chunk ${meta[i]?.id ?? i}:`, singleErr);
+      }
+    }
+    return recovered;
   }
 }
