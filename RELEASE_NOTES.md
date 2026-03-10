@@ -1,3 +1,26 @@
+# Release v1.5.0
+
+## Summary
+This release introduces robust multi-vault support and advanced workspace isolation for your Obsidian "Second Brain." By decoupling metadata storage from a single global location, users can now manage multiple independent knowledge bases with zero risk of collision. The update also includes significant reliability improvements to the RAG engine, ensuring that your semantic index remains consistent even in the face of partial failures.
+
+## New Features
+- **Workspace-Aware Isolation**:
+  - You can now specify a `workspace_path` to store your vector indices and file hashes in a dedicated project folder.
+  - Automatically defaults to a **Hashed Global Cache** when no workspace is provided, ensuring unique indices for every vault you use.
+  - This allows you to track your AI metadata in Git alongside your notes if desired.
+
+- **Advanced Multi-Vault Support**:
+  - The extension now correctly identifies and switches between different vaults within the same session.
+  - Internal database connections are automatically reset and re-established when you change your vault configuration.
+
+## Reliability & Integrity
+- **Atomic Indexing**: Implemented precise chunk tracking. File hashes are now only updated once *every* chunk of a file has been successfully embedded and persisted, preventing "partially indexed" states.
+- **Thread Safety**: Added a locking mechanism to serialize database operations, preventing race conditions during intensive indexing tasks.
+- **Robust Path Handling**: Upgraded path validation to fully support Windows file systems, Unicode filenames, and prevent path traversal attacks.
+
+## Developer Experience
+- **Simplified Configuration**: Refactored configuration loading to ensure environment variables consistently override cached settings, making it easier to integrate into automated workflows.
+
 # Release v1.4.0
 
 ## Summary

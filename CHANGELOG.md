@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-03-09
+
+### Features
+- feat(rag): implement workspace-aware metadata storage for RAG index and hashes
+- feat(obsidian): add support for multiple isolated vaults using hashed global cache
+- feat(config): enhance configuration persistence with environment variable overrides
+
+### Fixed
+- fix(rag): implement atomic hash updates to prevent stale index on partial failures
+- fix(rag): harden path validation to support Windows separators and Unicode filenames
+- fix(rag): ensure stale database connections are cleared when switching vaults
+
+### Refactor
+- refactor(rag): implement thread-safe locking for database operations
+- refactor(rag): decouple storage path resolution from singleton state
+
 ## [1.4.0] - 2026-03-08
 
 ### Features
