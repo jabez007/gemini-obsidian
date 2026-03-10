@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Features
 - feat(rag): implement workspace-aware metadata storage for RAG index and hashes
 - feat(obsidian): add support for multiple isolated vaults using hashed global cache
-- feat(config): enhance configuration persistence with environment variable overrides
+- feat(config): persist vault/workspace paths; allow environment variables to override persisted values at load time (env vars are not stored in the persisted config)
 
 ### Fixed
 - fix(rag): implement atomic hash updates to prevent stale index on partial failures

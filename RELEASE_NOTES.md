@@ -1,7 +1,7 @@
 # Release v1.5.0
 
 ## Summary
-This release introduces robust multi-vault support and advanced workspace isolation for your Obsidian "Second Brain." By decoupling metadata storage from a single global location, users can now manage multiple independent knowledge bases with zero risk of collision. The update also includes significant reliability improvements to the RAG engine, ensuring that your semantic index remains consistent even in the face of partial failures.
+This release introduces robust multi-vault support and advanced workspace isolation for your Obsidian "Second Brain." By decoupling metadata storage from a single global location, users can now manage multiple independent knowledge bases, practically eliminating the risk of collisions via a hash-based fallback mechanism. The update also includes significant reliability improvements to the RAG engine, ensuring that your semantic index remains consistent even in the face of partial failures.
 
 ## New Features
 - **Workspace-Aware Isolation**:
