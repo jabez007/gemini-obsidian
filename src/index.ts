@@ -320,7 +320,7 @@ async function readStdin(): Promise<string> {
                 WORKSPACE_PATH = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
             }
             VAULT_PATH = vp;
-            indexer.reset();
+            await indexer.reset();
             await saveConfig(VAULT_PATH, WORKSPACE_PATH);
             result = `Vault path set to: ${vp}` + (WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : '');
         } else {
@@ -566,7 +566,7 @@ async function readStdin(): Promise<string> {
           if (args && 'workspace_path' in args) {
               WORKSPACE_PATH = args.workspace_path ? String(args.workspace_path) : null;
           }
-          indexer.reset();
+          await indexer.reset();
           await saveConfig(VAULT_PATH, WORKSPACE_PATH);
           return { content: [{ type: 'text', text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ''}` }] };
       }

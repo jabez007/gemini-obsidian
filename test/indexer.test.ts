@@ -34,13 +34,13 @@ describe('VaultIndexer path resolution and storage', () => {
   let indexer: VaultIndexer;
 
   beforeEach(async () => {
+    mockHomedir = null;
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gemini-obsidian-test-'));
     vaultPath = path.join(tempDir, 'my-vault');
     workspacePath = path.join(tempDir, 'my-workspace');
     await fs.mkdir(vaultPath, { recursive: true });
     await fs.mkdir(workspacePath, { recursive: true });
     indexer = new VaultIndexer();
-    mockHomedir = null;
   });
 
   afterEach(async () => {
