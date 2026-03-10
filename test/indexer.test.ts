@@ -17,6 +17,16 @@ vi.mock('../src/rag/embedder', () => ({
   }
 }));
 
+// Global mock for os.homedir to allow control in tests
+let mockHomedir: string | null = null;
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('os')>();
+  return {
+    ...actual,
+    homedir: () => mockHomedir || actual.homedir(),
+  };
+});
+
 describe('VaultIndexer path resolution and storage', () => {
   let tempDir: string;
   let vaultPath: string;
@@ -30,6 +40,7 @@ describe('VaultIndexer path resolution and storage', () => {
     await fs.mkdir(vaultPath, { recursive: true });
     await fs.mkdir(workspacePath, { recursive: true });
     indexer = new VaultIndexer();
+    mockHomedir = null;
   });
 
   afterEach(async () => {
@@ -39,6 +50,7 @@ describe('VaultIndexer path resolution and storage', () => {
     }
     await fs.rm(tempDir, { recursive: true, force: true });
     vi.restoreAllMocks();
+    mockHomedir = null;
   });
 
   it('uses workspace_path when provided', async () => {
@@ -63,20 +75,17 @@ describe('VaultIndexer path resolution and storage', () => {
     await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a sufficiently long note to pass the minimum chunk size filter of forty characters.', 'utf-8');
 
     const vaultHash = md5(path.resolve(vaultPath));
-    const expectedGlobalPath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultHash);
+    // Set the mock homedir to our temp test dir
+    mockHomedir = tempDir;
+    const expectedGlobalPath = path.join(tempDir, '.gemini-obsidian', 'vaults', vaultHash);
     
-    try {
-      await indexer.indexVault(vaultPath, false);
+    await indexer.indexVault(vaultPath, false);
 
-      const dbExists = await fs.stat(path.join(expectedGlobalPath, 'lancedb')).then(() => true).catch(() => false);
-      const hashExists = await fs.stat(path.join(expectedGlobalPath, 'file-hashes.json')).then(() => true).catch(() => false);
+    const dbExists = await fs.stat(path.join(expectedGlobalPath, 'lancedb')).then(() => true).catch(() => false);
+    const hashExists = await fs.stat(path.join(expectedGlobalPath, 'file-hashes.json')).then(() => true).catch(() => false);
 
-      expect(dbExists).toBe(true);
-      expect(hashExists).toBe(true);
-    } finally {
-      // Clean up the global cache entry created by the test
-      await fs.rm(expectedGlobalPath, { recursive: true, force: true });
-    }
+    expect(dbExists).toBe(true);
+    expect(hashExists).toBe(true);
   });
 
   it('successfully indexes and searches a mock vault', async () => {

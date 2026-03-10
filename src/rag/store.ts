@@ -55,11 +55,21 @@ export class VaultIndexer {
   }
 
   private validatePath(relativePath: string) {
-    // Basic allowlist: alphanumeric, slashes, dots, underscores, hyphens, and spaces
-    if (!/^[a-zA-Z0-9\/\._\-\s]+$/.test(relativePath)) {
-      throw new Error(`Invalid file path: ${relativePath}`);
+    // Normalize path separators to forward slashes
+    const normalized = relativePath.replace(/\\/g, '/');
+    
+    // Disallow path traversal (..)
+    const segments = normalized.split('/');
+    if (segments.some(s => s === '..')) {
+      throw new Error(`Invalid file path (traversal): ${relativePath}`);
     }
-    return relativePath;
+
+    // Reject control characters and null bytes
+    if (/[\x00-\x1F\x7F]/.test(normalized)) {
+      throw new Error(`Invalid file path (control chars): ${relativePath}`);
+    }
+
+    return normalized;
   }
 
   private async getPaths(vaultPath: string, workspacePath?: string | null) {
@@ -104,14 +114,25 @@ export class VaultIndexer {
   public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null) {
     const release = await this.acquireLock();
     try {
-      this.validatePath(relativePath);
+      const normalizedPath = this.validatePath(relativePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
       const embedder = Embedder.getInstance();
       const filePath = getSafeFilePath(vaultPath, relativePath);
 
       const content = await fs.readFile(filePath, 'utf-8');
-      const { data, content: body } = matter(content);
+      const contentHash = md5(content);
+      const { content: body } = matter(content);
 
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptionsFromEnv());
+
+      // Load hashes to update
+      let hashes: Record<string, string> = {};
+      try {
+          hashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
+      } catch { /* ignore */ }
+
+      const db = await this.getDb(vaultPath, workspacePath);
+      const tableNames = await db.tableNames();
 
       if (textsToEmbed.length > 0) {
           const chunks = await this.embedWithFallback(embedder, textsToEmbed, chunkMetadata);
@@ -120,21 +141,29 @@ export class VaultIndexer {
           }
           const chunkRows = chunks as unknown as Record<string, unknown>[];
 
-          const db = await this.getDb(vaultPath, workspacePath);
-          const tableNames = await db.tableNames();
-          let table: lancedb.Table;
           if (!tableNames.includes('notes')) {
-              table = await db.createTable('notes', chunkRows);
+              await db.createTable('notes', chunkRows);
           } else {
-              table = await db.openTable('notes');
+              const table = await db.openTable('notes');
               // Delete old chunks for this file
-              await table.delete(`path = '${relativePath.replace(/'/g, "''")}'`);
+              await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
               await table.add(chunkRows);
           }
+          
+          hashes[normalizedPath] = contentHash;
+          await fs.writeFile(hashPath, JSON.stringify(hashes));
           console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
           return { success: true, chunks: chunks.length };
+      } else {
+          // No chunks: Remove from DB and hashes
+          if (tableNames.includes('notes')) {
+              const table = await db.openTable('notes');
+              await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+          }
+          delete hashes[normalizedPath];
+          await fs.writeFile(hashPath, JSON.stringify(hashes));
+          return { success: true, chunks: 0, message: "File removed from index (no embeddable content)." };
       }
-      return { success: false, message: "No content to index or table not available." };
     } catch (err) {
       console.error(`Failed to index file ${relativePath}:`, err);
       return { success: false, message: String(err) };

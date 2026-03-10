@@ -316,12 +316,13 @@ async function readStdin(): Promise<string> {
             result = `Appended to daily note under "${heading}"`;
         } else if (toolName === 'obsidian_set_vault') {
             const vp = String(parsedArgs.path);
-            const wp = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
+            if ('workspace_path' in parsedArgs) {
+                WORKSPACE_PATH = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
+            }
             VAULT_PATH = vp;
-            WORKSPACE_PATH = wp;
             indexer.reset();
-            await saveConfig(vp, wp);
-            result = `Vault path set to: ${vp}` + (wp ? ` with workspace: ${wp}` : '');
+            await saveConfig(VAULT_PATH, WORKSPACE_PATH);
+            result = `Vault path set to: ${vp}` + (WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : '');
         } else {
             console.error(`Unknown tool: ${toolName}`);
             process.exit(1);
@@ -562,7 +563,9 @@ async function readStdin(): Promise<string> {
     try {
       if (name === 'obsidian_set_vault') {
           VAULT_PATH = String(args?.path);
-          WORKSPACE_PATH = args?.workspace_path ? String(args.workspace_path) : null;
+          if (args && 'workspace_path' in args) {
+              WORKSPACE_PATH = args.workspace_path ? String(args.workspace_path) : null;
+          }
           indexer.reset();
           await saveConfig(VAULT_PATH, WORKSPACE_PATH);
           return { content: [{ type: 'text', text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ''}` }] };
