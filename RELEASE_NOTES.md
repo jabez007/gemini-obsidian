@@ -1,19 +1,38 @@
 # Release v1.7.0
 
 ## Summary
-Adds 10 skills and 2 agents ported from obsidian-rag, fixes a LanceDB stale fragment bug that broke incremental reindexing, and updates all dependencies.
+This release is a major consolidation that brings together advanced vault management with robust workspace isolation, 10 new skills, and 2 new agents. By integrating the latest upstream features (broken link detection, frontmatter validation, and new skills) with our new Workspace Isolated Storage, users now have the most powerful and flexible environment for managing their Obsidian knowledge base.
 
 ## New Features
-- **Skills**: compound, cross-linker, index, journal, links, research, search, vault, vault-lint, wiki-ingest
-- **Agents**: researcher (deep vault research with semantic search chaining), librarian (vault organization and maintenance)
+- **Workspace-Aware Isolation**:
+  - Specify a `workspace_path` to store vector indices and file hashes in a dedicated project folder.
+  - Automatically defaults to a **Hashed Global Cache** when no workspace is provided, ensuring unique indices for every vault.
+  - Track AI metadata in Git alongside your notes for better portability.
 
-## Bug Fixes
-- **LanceDB stale fragment error** — incremental reindex failed after full reindex due to uncompacted data fragments. Now calls `table.optimize()` after indexing.
+- **New AI Skills & Agents**:
+  - **Skills**: compound, cross-linker, index, journal, links, research, search, vault, vault-lint, wiki-ingest.
+  - **Agents**: researcher (deep vault research with semantic search chaining), librarian (vault organization and maintenance).
+  - **Existing Skills Updated**: knowledge (promotion to global vaults), link-audit (broken links/orphans), moc-update (MOC suggestions).
+
+- **Advanced Vault Health & Repair**:
+  - `obsidian_get_broken_links`: Automatically identifies wikilinks pointing to non-existent notes.
+  - `obsidian_replace_in_note`: Targeted, surgical text replacement for repairing links or content.
+  - Enhanced `obsidian_update_frontmatter` with batch update support.
+
+- **Automated Lifecycle Hooks**:
+  - **Session Initialization**: Refreshes RAG index and reports status on startup.
+  - **Frontmatter Validation**: Configurable rules to enforce required metadata.
+
+## Reliability & Performance
+- **Atomic Indexing**: Precise chunk tracking ensures consistency even during partial failures.
+- **Thread Safety**: Locking mechanism for database operations prevents race conditions.
+- **Incremental Indexing**: Only modified files are re-processed, drastically reducing overhead.
+- **LanceDB Fix**: Fixed stale fragment error by calling `table.optimize()` after indexing.
 
 ## Infrastructure
-- Updated dependencies: @lancedb/lancedb 0.27, sharp 0.34, esbuild 0.28, TypeScript 6.0, @modelcontextprotocol/sdk 1.29
-- Added SECURITY.md, CODE_OF_CONDUCT.md, PR template
-- Added repository metadata to package.json
+- Updated dependencies: @lancedb/lancedb 0.27, sharp 0.34, esbuild 0.28, TypeScript 6.0, @modelcontextprotocol/sdk 1.29.
+- Added SECURITY.md, CODE_OF_CONDUCT.md, PR template.
+- Added repository metadata to package.json.
 
 ---
 
@@ -51,6 +70,29 @@ This release introduces advanced vault management capabilities, including broken
 ## Developer Experience
 - **Expanded Test Coverage**: New tests for batch frontmatter updates, surgical replacement logic, and recursive note listing.
 - **Improved Utilities**: Refactored internal file handling to support robust recursive path patterns.
+
+---
+
+# Release v1.5.0
+
+## Summary
+This release introduces workspace-aware metadata storage, providing better isolation for multiple vaults and allowing users to store indexing data within project directories. We have also hardened path validation and improved the reliability of incremental indexing.
+
+## New Features
+- **Workspace-Aware Isolation**:
+  - Implement workspace-aware metadata storage for RAG index and hashes.
+  - Add support for multiple isolated vaults using a hashed global cache.
+  - Persist vault and workspace paths, with environment variable overrides at load time.
+  - Follow symlinks to support indexing external files.
+
+## Fixed
+- **Incremental Indexing**: Atomic hash updates prevent stale indices on partial failures.
+- **Cross-Platform Support**: Harden path validation for Windows separators and Unicode filenames.
+- **Stability**: Ensure stale database connections are cleared when switching vaults.
+
+## Refactor
+- **Thread Safety**: Implement thread-safe locking for database operations.
+- **Architecture**: Decouple storage path resolution from singleton state.
 
 ---
 
@@ -99,4 +141,18 @@ This release focuses on improving the robustness and efficiency of the RAG (Retr
 - If you encounter errors related to `onnxruntime-node` after upgrading, please ensure you run `npm install` in the extension directory to apply the pinned version.
 
 # Release v1.2.0
-...
+
+## Summary
+This release introduces significant improvements to the indexing engine for better reliability and performance with large vaults. It also refines the CLI and hook integration for a smoother experience.
+
+## New Features
+- **Large Vault Indexing**: Overhauled the indexing process to handle large volumes of notes more reliably, with better error recovery and progress reporting.
+
+## Bug Fixes
+- **CLI Flags**: Correctly handle boolean flags in the CLI.
+- **Hook Integration**: Prevent full re-indexing during hook execution to improve performance and avoid redundant work.
+- **Input Handling**: Use stdin for hook input to avoid issues with shell substitution and large payloads.
+
+## Operational Notes
+- The `dist/` directory is no longer ignored by git, ensuring that built assets are available for distribution.
+- `package-lock.json` has been updated to reflect current dependency states.

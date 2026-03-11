@@ -19,9 +19,6 @@ function chunkingOptionsFromEnv(): ChunkingOptions {
   return { minChunkChars: min, maxChunkChars: max, targetChunkChars: target };
 }
 
-const DB_PATH = path.join(os.homedir(), '.gemini-obsidian-lancedb');
-const HASH_PATH = path.join(os.homedir(), '.gemini-obsidian-file-hashes.json');
-
 interface NoteChunk {
   id: string;
   path: string;
@@ -31,44 +28,87 @@ interface NoteChunk {
 
 export class VaultIndexer {
   private db: lancedb.Connection | null = null;
-  private table: lancedb.Table | null = null;
+  private currentDbPath: string | null = null;
+  private lock: Promise<void> = Promise.resolve();
 
   constructor() {}
 
-  private async getDb() {
-    if (!this.db) {
-      this.db = await lancedb.connect(DB_PATH);
+  private async acquireLock(): Promise<() => void> {
+    let release: () => void;
+    const nextLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const wait = this.lock;
+    this.lock = nextLock;
+    await wait;
+    return release!;
+  }
+
+  public async reset() {
+    const release = await this.acquireLock();
+    try {
+      this.db = null;
+      this.currentDbPath = null;
+    } finally {
+      release();
     }
+  }
+
+  private validatePath(relativePath: string) {
+    // Normalize path separators to forward slashes
+    const normalized = relativePath.replace(/\\/g, '/');
+    
+    // Disallow path traversal (..)
+    const segments = normalized.split('/');
+    if (segments.some(s => s === '..')) {
+      throw new Error(`Invalid file path (traversal): ${relativePath}`);
+    }
+
+    // Reject control characters and null bytes
+    if (/[\x00-\x1F\x7F]/.test(normalized)) {
+      throw new Error(`Invalid file path (control chars): ${relativePath}`);
+    }
+
+    return normalized;
+  }
+
+  private async getPaths(vaultPath: string, workspacePath?: string | null) {
+    let baseStorePath: string;
+    const vaultHash = md5(path.resolve(vaultPath));
+
+    if (workspacePath) {
+      baseStorePath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash);
+    } else {
+      // Hashed Global Cache: ~/.gemini-obsidian/vaults/<hash_of_vault_path>
+      baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultHash);
+    }
+
+    const dbPath = path.join(baseStorePath, 'lancedb');
+    const hashPath = path.join(baseStorePath, 'file-hashes.json');
+
+    // Ensure the storage directory exists
+    await fs.mkdir(baseStorePath, { recursive: true });
+    
+    return { dbPath, hashPath };
+  }
+
+  private async getDb(vaultPath: string, workspacePath?: string | null) {
+    const { dbPath } = await this.getPaths(vaultPath, workspacePath);
+    if (this.db && this.currentDbPath === dbPath) {
+      return this.db;
+    }
+    this.db = await lancedb.connect(dbPath);
+    this.currentDbPath = dbPath;
     return this.db;
   }
 
-  private async getTable() {
-    const db = await this.getDb();
+  private async getTable(vaultPath: string, workspacePath?: string | null) {
+    const db = await this.getDb(vaultPath, workspacePath);
     const tableNames = await db.tableNames();
     if (tableNames.includes('notes')) {
-      this.table = await db.openTable('notes');
+      return await db.openTable('notes');
     }
-    return this.table;
-  }
-
-  private async createOrGetTable(data?: any[]) {
-    const db = await this.getDb();
-    const tableNames = await db.tableNames();
-
-    if (tableNames.includes('notes')) {
-        this.table = await db.openTable('notes');
-        if (data && data.length > 0) {
-            await this.table.add(data);
-        }
-    } else {
-        if (!data || data.length === 0) {
-            // Cannot create empty table easily without schema in some versions,
-            // but let's wait until we have data.
-            return null;
-        }
-        this.table = await db.createTable('notes', data);
-    }
-    return this.table;
+    return null;
   }
 
   private async embedWithFallback(
@@ -103,15 +143,28 @@ export class VaultIndexer {
     return recovered;
   }
 
-  public async indexFile(vaultPath: string, relativePath: string) {
-    const embedder = Embedder.getInstance();
-    const filePath = getSafeFilePath(vaultPath, relativePath);
-
+  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null) {
+    const release = await this.acquireLock();
     try {
-      const content = await fs.readFile(filePath, 'utf-8');
-      const { data, content: body } = matter(content);
+      const normalizedPath = this.validatePath(relativePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const embedder = Embedder.getInstance();
+      const filePath = getSafeFilePath(vaultPath, relativePath);
 
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+      const content = await fs.readFile(filePath, 'utf-8');
+      const contentHash = md5(content);
+      const { content: body } = matter(content);
+
+      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptionsFromEnv());
+
+      // Load hashes to update
+      let hashes: Record<string, string> = {};
+      try {
+          hashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
+      } catch { /* ignore */ }
+
+      const db = await this.getDb(vaultPath, workspacePath);
+      const tableNames = await db.tableNames();
 
       if (textsToEmbed.length > 0) {
           const chunks = await this.embedWithFallback(embedder, textsToEmbed, chunkMetadata);
@@ -120,270 +173,326 @@ export class VaultIndexer {
           }
           const chunkRows = chunks as unknown as Record<string, unknown>[];
 
-          const db = await this.getDb();
-          const tableNames = await db.tableNames();
+          let table: lancedb.Table;
           if (!tableNames.includes('notes')) {
-              this.table = await db.createTable('notes', chunkRows);
+              table = await db.createTable('notes', chunkRows);
           } else {
-              this.table = await db.openTable('notes');
+              table = await db.openTable('notes');
               // Delete old chunks for this file
-              await this.table.delete(`path = '${relativePath.replace(/'/g, "''")}'`);
-              await this.table.add(chunkRows);
+              await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+              await table.add(chunkRows);
           }
-          await this.table.optimize();
+          await table.optimize();
+          
+          hashes[normalizedPath] = contentHash;
+          await fs.writeFile(hashPath, JSON.stringify(hashes));
           console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
           return { success: true, chunks: chunks.length };
+      } else {
+          // No chunks: Remove from DB and hashes
+          if (tableNames.includes('notes')) {
+              const table = await db.openTable('notes');
+              await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+              await table.optimize();
+          }
+          delete hashes[normalizedPath];
+          await fs.writeFile(hashPath, JSON.stringify(hashes));
+          return { success: true, chunks: 0, message: "File removed from index (no embeddable content)." };
       }
-      return { success: false, message: "No content to index or table not available." };
     } catch (err) {
-      console.error(`Failed to index file ${filePath}:`, err);
+      console.error(`Failed to index file ${relativePath}:`, err);
       return { success: false, message: String(err) };
+    } finally {
+      release();
     }
   }
 
-  public async indexVault(vaultPath: string, force: boolean = false) {
-    const embedder = Embedder.getInstance();
-    const db = await this.getDb();
+  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null) {
+    const release = await this.acquireLock();
+    try {
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const embedder = Embedder.getInstance();
+      const db = await this.getDb(vaultPath, workspacePath);
 
-    // Find all markdown files
-    const files = await glob('**/*.md', { cwd: vaultPath, absolute: true, follow: true });
-    console.error(`Found ${files.length} notes in ${vaultPath}`);
+      // Find all markdown files (incorporating follow: true from upstream)
+      const files = await glob('**/*.md', { cwd: vaultPath, absolute: true, follow: true });
+      console.error(`Found ${files.length} notes in ${vaultPath}`);
 
-    // Load previous file hashes for incremental indexing
-    let previousHashes: Record<string, string> = {};
-    if (!force) {
-      try {
-        previousHashes = JSON.parse(await fs.readFile(HASH_PATH, 'utf-8'));
-      } catch { /* no previous hashes — will do full index */ }
-    }
-
-    const tableNames = await db.tableNames();
-    const tableExists = tableNames.includes('notes');
-    const hasPreviousHashes = Object.keys(previousHashes).length > 0;
-    const canIncremental = tableExists && hasPreviousHashes && !force;
-
-    const batchSizeRaw = Number(process.env.GEMINI_OBSIDIAN_EMBED_BATCH_SIZE ?? '48');
-    const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.min(Math.floor(batchSizeRaw), 256) : 48;
-    const useProgressBar = process.stderr.isTTY === true;
-    const progressInterval = 100;
-
-    // ── Phase 1: Read all files, compute hashes, build chunks for changed files ──
-    const allTexts: string[] = [];
-    const allMeta: { id: string; text: string; path: string }[] = [];
-    const currentHashes: Record<string, string> = {};
-    const changedPaths: string[] = [];
-    let filesRead = 0;
-    let skippedFiles = 0;
-
-    const renderReadProgress = () => {
-      if (files.length === 0) return;
-      if (useProgressBar) {
-        const percent = Math.min(100, Math.floor((filesRead / files.length) * 100));
-        const width = 30;
-        const filled = Math.round((percent / 100) * width);
-        const bar = `${'='.repeat(filled)}${'-'.repeat(width - filled)}`;
-        process.stderr.write(
-          `\rReading [${bar}] ${percent}% ${filesRead}/${files.length} files`
-        );
-        if (filesRead === files.length) process.stderr.write('\n');
-        return;
-      }
-      if (filesRead % progressInterval === 0 || filesRead === files.length) {
-        console.error(`Reading progress: ${filesRead}/${files.length} files`);
-      }
-    };
-
-    const FILE_READ_CONCURRENCY = 50;
-    for (let i = 0; i < files.length; i += FILE_READ_CONCURRENCY) {
-      const batch = files.slice(i, i + FILE_READ_CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async (filePath) => {
-          try {
-            const content = await fs.readFile(filePath, 'utf-8');
-            const relativePath = path.relative(vaultPath, filePath);
-            const contentHash = md5(content);
-            currentHashes[relativePath] = contentHash;
-
-            // Skip unchanged files in incremental mode
-            if (canIncremental && previousHashes[relativePath] === contentHash) {
-              return null;
-            }
-
-            changedPaths.push(relativePath);
-            const { content: body } = matter(content);
-            return buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
-          } catch (err) {
-            console.error(`Failed to process file ${filePath}:`, err);
-            return null;
-          }
-        })
-      );
-
-      for (const result of results) {
-        if (result) {
-          for (let j = 0; j < result.textsToEmbed.length; j++) {
-            allTexts.push(result.textsToEmbed[j]);
-            allMeta.push(result.chunkMetadata[j]);
-          }
-        } else {
-          skippedFiles++;
-        }
+      // Load previous file hashes for incremental indexing
+      let previousHashes: Record<string, string> = {};
+      if (!force) {
+        try {
+          previousHashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
+        } catch { /* no previous hashes — will do full index */ }
       }
 
-      filesRead += batch.length;
-      renderReadProgress();
-    }
+      const tableNames = await db.tableNames();
+      const tableExists = tableNames.includes('notes');
+      const hasPreviousHashes = Object.keys(previousHashes).length > 0;
+      const canIncremental = tableExists && hasPreviousHashes && !force;
 
-    // Determine deleted files (in previous hashes but not in current file set)
-    const deletedPaths = Object.keys(previousHashes).filter(p => !(p in currentHashes));
+      const batchSizeRaw = Number(process.env.GEMINI_OBSIDIAN_EMBED_BATCH_SIZE ?? '48');
+      const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.min(Math.floor(batchSizeRaw), 256) : 48;
+      const useProgressBar = process.stderr.isTTY === true;
+      const progressInterval = 100;
 
-    if (canIncremental) {
-      console.error(`Incremental: ${changedPaths.length} changed, ${deletedPaths.length} deleted, ${skippedFiles} unchanged`);
-    } else {
-      console.error(`Full index: ${allTexts.length} chunks from ${files.length} files`);
-    }
+      // ── Phase 1: Read all files, compute hashes, build chunks for changed files ──
+      const allTexts: string[] = [];
+      const allMeta: { id: string; text: string; path: string }[] = [];
+      const changedHashes: Record<string, string> = {}; // Hashes of files we are attempting to index
+      const expectedChunkCounts: Record<string, number> = {}; // Expected total chunks per file
+      const currentHashes: Record<string, string> = { ...previousHashes }; // Start with old hashes
+      const changedPaths: string[] = [];
+      let filesRead = 0;
+      let skippedFiles = 0;
 
-    // Early exit: nothing changed
-    if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
-      console.error('Index is up to date, no changes detected.');
-      await fs.writeFile(HASH_PATH, JSON.stringify(currentHashes));
-      return { success: true, chunks: 0, message: 'Index up to date, no changes detected.' };
-    }
-
-    if (!canIncremental && allTexts.length === 0) {
-      return { success: false, message: "No content found to index." };
-    }
-
-    // ── Phase 2: Update index ─────────────────────────────────────────
-
-    let indexedChunks = 0;
-    let tableInitialized = false;
-
-    // For incremental mode: delete old chunks for changed/deleted files, keep existing table
-    if (canIncremental) {
-      this.table = await db.openTable('notes');
-      const pathsToDelete = [...changedPaths, ...deletedPaths];
-      if (pathsToDelete.length > 0) {
-        const DELETE_BATCH = 100;
-        for (let i = 0; i < pathsToDelete.length; i += DELETE_BATCH) {
-          const batch = pathsToDelete.slice(i, i + DELETE_BATCH);
-          const escaped = batch.map(p => `'${p.replace(/'/g, "''")}'`);
-          await this.table.delete(`path IN (${escaped.join(', ')})`);
-        }
-      }
-      tableInitialized = true;
-    }
-
-    // Embed new/changed chunks (or all chunks for full reindex)
-    if (allTexts.length > 0) {
-      // Sort chunks by text length to reduce ONNX padding waste
-      const sortedIndices = allTexts.map((_, i) => i);
-      sortedIndices.sort((a, b) => allTexts[a].length - allTexts[b].length);
-      const sortedTexts = sortedIndices.map(i => allTexts[i]);
-      const sortedMeta = sortedIndices.map(i => allMeta[i]);
-
-      let chunksEmbedded = 0;
-
-      const renderEmbedProgress = () => {
-        const total = sortedTexts.length;
-        if (total === 0) return;
+      const renderReadProgress = () => {
+        if (files.length === 0) return;
         if (useProgressBar) {
-          const percent = Math.min(100, Math.floor((chunksEmbedded / total) * 100));
+          const percent = Math.min(100, Math.floor((filesRead / files.length) * 100));
           const width = 30;
           const filled = Math.round((percent / 100) * width);
           const bar = `${'='.repeat(filled)}${'-'.repeat(width - filled)}`;
           process.stderr.write(
-            `\rEmbedding [${bar}] ${percent}% ${chunksEmbedded}/${total} chunks`
+            `\rReading [${bar}] ${percent}% ${filesRead}/${files.length} files`
           );
-          if (chunksEmbedded === total) process.stderr.write('\n');
+          if (filesRead === files.length) process.stderr.write('\n');
           return;
         }
-        if (chunksEmbedded % (batchSize * 5) === 0 || chunksEmbedded === total) {
-          console.error(`Embedding progress: ${chunksEmbedded}/${total} chunks`);
+        if (filesRead % progressInterval === 0 || filesRead === files.length) {
+          console.error(`Reading progress: ${filesRead}/${files.length} files`);
         }
       };
 
-      const persistChunks = async (chunks: NoteChunk[]) => {
-        if (chunks.length === 0) return;
-        const chunkRows = chunks as unknown as Record<string, unknown>[];
+      const FILE_READ_CONCURRENCY = 50;
+      for (let i = 0; i < files.length; i += FILE_READ_CONCURRENCY) {
+        const batch = files.slice(i, i + FILE_READ_CONCURRENCY);
+        const results = await Promise.all(
+          batch.map(async (filePath) => {
+            try {
+              const content = await fs.readFile(filePath, 'utf-8');
+              const relativePathRaw = path.relative(vaultPath, filePath);
+              const relativePath = relativePathRaw.replace(/\\/g, '/');
+              const contentHash = md5(content);
 
-        if (!tableInitialized) {
-          try {
-            await db.dropTable('notes');
-          } catch (e) { /* ignore if not exists */ }
-          this.table = await db.createTable('notes', chunkRows);
-          tableInitialized = true;
-        } else {
-          if (!this.table) {
-            this.table = await db.openTable('notes');
+              // Skip unchanged files in incremental mode
+              if (canIncremental && previousHashes[relativePath] === contentHash) {
+                return null;
+              }
+
+              this.validatePath(relativePath);
+              changedHashes[relativePath] = contentHash;
+              changedPaths.push(relativePath);
+              const { content: body } = matter(content);
+              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+              
+              if (inputs.textsToEmbed.length > 0) {
+                expectedChunkCounts[relativePath] = inputs.textsToEmbed.length;
+                return inputs;
+              } else {
+                // File has no embeddable content (too short or empty)
+                // Mark it as done immediately so we don't keep trying to index it
+                currentHashes[relativePath] = contentHash;
+                return null;
+              }
+            } catch (err) {
+              console.error(`Failed to process file ${filePath}:`, err);
+              return null;
+            }
+          })
+        );
+
+        for (const result of results) {
+          if (result) {
+            for (let j = 0; j < result.textsToEmbed.length; j++) {
+              allTexts.push(result.textsToEmbed[j]);
+              allMeta.push(result.chunkMetadata[j]);
+            }
+          } else {
+            skippedFiles++;
           }
-          await this.table.add(chunkRows);
         }
 
-        indexedChunks += chunks.length;
-      };
+        filesRead += batch.length;
+        renderReadProgress();
+      }
 
-      // Accumulate ~5 embedding batches before writing to reduce per-write overhead
-      const WRITE_ACCUMULATE = 5;
-      let pendingChunks: NoteChunk[] = [];
-      let batchesSinceWrite = 0;
-      let pendingWrite: Promise<void> | null = null;
+      // Determine deleted files (in previous hashes but not in current file set)
+      const existingRelativePaths = new Set<string>();
+      for (const f of files) {
+          existingRelativePaths.add(path.relative(vaultPath, f).replace(/\\/g, '/'));
+      }
+      const deletedPaths = Object.keys(previousHashes).filter(p => !existingRelativePaths.has(p));
 
-      for (let i = 0; i < sortedTexts.length; i += batchSize) {
-        const batchTexts = sortedTexts.slice(i, i + batchSize);
-        const batchMeta = sortedMeta.slice(i, i + batchSize);
+      if (canIncremental) {
+        console.error(`Incremental: ${changedPaths.length} changed, ${deletedPaths.length} deleted, ${skippedFiles} unchanged`);
+      } else {
+        console.error(`Full index: ${allTexts.length} chunks from ${files.length} files`);
+      }
 
-        const embeddedChunks = await this.embedWithFallback(embedder, batchTexts, batchMeta);
-        pendingChunks.push(...embeddedChunks);
-        batchesSinceWrite++;
-        chunksEmbedded += batchTexts.length;
-        renderEmbedProgress();
+      // Early exit: nothing changed
+      if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
+        console.error('Index is up to date, no changes detected.');
+        await fs.writeFile(hashPath, JSON.stringify(currentHashes));
+        return { success: true, chunks: 0, message: 'Index up to date, no changes detected.' };
+      }
 
-        if (batchesSinceWrite >= WRITE_ACCUMULATE) {
-          if (pendingWrite) await pendingWrite;
-          const chunksToWrite = pendingChunks;
-          pendingChunks = [];
-          batchesSinceWrite = 0;
-          pendingWrite = persistChunks(chunksToWrite);
+      if (!canIncremental && allTexts.length === 0) {
+        return { success: false, message: "No content found to index." };
+      }
+
+      // ── Phase 2: Update index ─────────────────────────────────────────
+
+      let indexedChunks = 0;
+      let tableInitialized = false;
+      let table: lancedb.Table | null = null;
+      const persistedChunkCounts: Record<string, number> = {};
+
+      // For incremental mode: delete old chunks for changed/deleted files, keep existing table
+      if (canIncremental) {
+        table = await db.openTable('notes');
+        const pathsToDelete = [...changedPaths, ...deletedPaths];
+        if (pathsToDelete.length > 0) {
+          const DELETE_BATCH = 100;
+          for (let i = 0; i < pathsToDelete.length; i += DELETE_BATCH) {
+            const batch = pathsToDelete.slice(i, i + DELETE_BATCH);
+            const escaped = batch.map(p => `'${p.replace(/'/g, "''")}'`);
+            await table.delete(`path IN (${escaped.join(', ')})`);
+          }
+        }
+        tableInitialized = true;
+        for (const p of deletedPaths) delete currentHashes[p];
+      } else {
+          for (const k in currentHashes) delete currentHashes[k];
+      }
+
+      // Embed new/changed chunks (or all chunks for full reindex)
+      if (allTexts.length > 0) {
+        // Sort chunks by text length to reduce ONNX padding waste
+        const sortedIndices = allTexts.map((_, i) => i);
+        sortedIndices.sort((a, b) => allTexts[a].length - allTexts[b].length);
+        const sortedTexts = sortedIndices.map(i => allTexts[i]);
+        const sortedMeta = sortedIndices.map(i => allMeta[i]);
+
+        let chunksEmbedded = 0;
+
+        const renderEmbedProgress = () => {
+          const total = sortedTexts.length;
+          if (total === 0) return;
+          if (useProgressBar) {
+            const percent = Math.min(100, Math.floor((chunksEmbedded / total) * 100));
+            const width = 30;
+            const filled = Math.round((percent / 100) * width);
+            const bar = `${'='.repeat(filled)}${'-'.repeat(width - filled)}`;
+            process.stderr.write(
+              `\rEmbedding [${bar}] ${percent}% ${chunksEmbedded}/${total} chunks`
+            );
+            if (chunksEmbedded === total) process.stderr.write('\n');
+            return;
+          }
+          if (chunksEmbedded % (batchSize * 5) === 0 || chunksEmbedded === total) {
+            console.error(`Embedding progress: ${chunksEmbedded}/${total} chunks`);
+          }
+        };
+
+        const persistChunks = async (chunks: NoteChunk[]) => {
+          if (chunks.length === 0) return;
+          const chunkRows = chunks as unknown as Record<string, unknown>[];
+
+          if (!tableInitialized) {
+            try {
+              await db.dropTable('notes');
+            } catch (e) { /* ignore if not exists */ }
+            table = await db.createTable('notes', chunkRows);
+            tableInitialized = true;
+          } else {
+            if (!table) {
+              table = await db.openTable('notes');
+            }
+            await table.add(chunkRows);
+          }
+
+          indexedChunks += chunks.length;
+          
+          for (const c of chunks) {
+              const p = c.path;
+              persistedChunkCounts[p] = (persistedChunkCounts[p] || 0) + 1;
+              if (persistedChunkCounts[p] === expectedChunkCounts[p]) {
+                  if (changedHashes[p]) {
+                      currentHashes[p] = changedHashes[p];
+                  }
+              }
+          }
+        };
+
+        // Accumulate ~5 embedding batches before writing to reduce per-write overhead
+        const WRITE_ACCUMULATE = 5;
+        let pendingChunks: NoteChunk[] = [];
+        let batchesSinceWrite = 0;
+        let pendingWrite: Promise<void> | null = null;
+
+        for (let i = 0; i < sortedTexts.length; i += batchSize) {
+          const batchTexts = sortedTexts.slice(i, i + batchSize);
+          const batchMeta = sortedMeta.slice(i, i + batchSize);
+
+          const embeddedChunks = await this.embedWithFallback(embedder, batchTexts, batchMeta);
+          pendingChunks.push(...embeddedChunks);
+          batchesSinceWrite++;
+          chunksEmbedded += batchTexts.length;
+          renderEmbedProgress();
+
+          if (batchesSinceWrite >= WRITE_ACCUMULATE) {
+            if (pendingWrite) await pendingWrite;
+            const chunksToWrite = pendingChunks;
+            pendingChunks = [];
+            batchesSinceWrite = 0;
+            pendingWrite = persistChunks(chunksToWrite);
+          }
+        }
+
+        if (pendingWrite) await pendingWrite;
+        if (pendingChunks.length > 0) {
+          await persistChunks(pendingChunks);
         }
       }
 
-      // Flush remaining chunks
-      if (pendingWrite) await pendingWrite;
-      if (pendingChunks.length > 0) {
-        await persistChunks(pendingChunks);
+      // Compact fragments and clean up old versions to prevent stale references
+      if (table) {
+        await table.optimize();
       }
-    }
 
-    // Compact fragments and clean up old versions to prevent stale references
-    if (this.table) {
-      await this.table.optimize();
-    }
+      // Save updated hashes
+      await fs.writeFile(hashPath, JSON.stringify(currentHashes));
 
-    // Save updated hashes
-    await fs.writeFile(HASH_PATH, JSON.stringify(currentHashes));
-
-    if (canIncremental) {
-      console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
-    } else {
-      console.error(`Indexed ${indexedChunks} chunks.`);
+      if (canIncremental) {
+        console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
+      } else {
+        console.error(`Indexed ${indexedChunks} chunks.`);
+      }
+      return { success: true, chunks: indexedChunks };
+    } finally {
+      release();
     }
-    return { success: true, chunks: indexedChunks };
   }
 
-  public async search(query: string, limit: number = 5) {
-    const table = await this.getTable();
-    if (!table) {
-        return [];
+  public async search(query: string, vaultPath: string, limit: number = 5, workspacePath?: string | null) {
+    const release = await this.acquireLock();
+    try {
+      const table = await this.getTable(vaultPath, workspacePath);
+      if (!table) {
+          return [];
+      }
+
+      const embedder = Embedder.getInstance();
+      const vector = await embedder.embed(query);
+
+      const results = await table.vectorSearch(vector)
+          .limit(limit)
+          .toArray();
+
+      return results;
+    } finally {
+      release();
     }
-
-    const embedder = Embedder.getInstance();
-    const vector = await embedder.embed(query);
-
-    const results = await table.vectorSearch(vector)
-        .limit(limit)
-        .toArray();
-
-    return results;
   }
 }
