@@ -20,6 +20,7 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 ### 1. Initialization
 
 - **Check Vault Path:** Before calling any tool, ensure you know the `vault_path`. If it's not provided in the current context or environment (`OBSIDIAN_VAULT_PATH`), ask the user: "Please provide the absolute path to your Obsidian Vault."
+- **Workspace Isolation:** If the user wants to keep the vector index outside their vault or isolated per project, you can use the `workspace_path` parameter in `obsidian_set_vault`, `obsidian_rag_index`, and `obsidian_rag_query`.
 - **First Time RAG:** If the user asks a semantic question (e.g., "Summarize my thoughts on AI"), try `obsidian_rag_query`. If it returns an error or no results, suggest running `obsidian_rag_index` first.
 
 ### 2. Retrieval Strategy
@@ -51,6 +52,9 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 
 **User:** "Index my vault."
 **Agent:** `obsidian_rag_index(vault_path="/Users/me/Vault")`
+
+**User:** "Index my vault at /Users/me/Vault but keep the index in /Users/me/Project/.gemini-obsidian"
+**Agent:** `obsidian_rag_index(vault_path="/Users/me/Vault", workspace_path="/Users/me/Project")`
 
 **User:** "Find the recipe for lasagna."
 **Agent:** `obsidian_search_notes(query="lasagna", vault_path="/Users/me/Vault")`
