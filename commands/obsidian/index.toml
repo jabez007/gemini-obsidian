@@ -1,2 +1,2 @@
-description = "Index the vault for Semantic Search"
-prompt = "Please run the `obsidian_rag_index` tool to index the vault for semantic search."
+description = "Index the vault for Semantic Search (Incremental by default)"
+prompt = "Please run the `obsidian_rag_index` tool to index the vault for semantic search. This tool will perform incremental indexing by default. Note that `force_reindex` will rebuild the entire vault ONLY when running a full-vault index (no `file_path`); it is ignored for single-file indexing."
