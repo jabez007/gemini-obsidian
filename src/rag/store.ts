@@ -72,15 +72,20 @@ export class VaultIndexer {
     return normalized;
   }
 
-  private async getPaths(vaultPath: string, workspacePath?: string | null) {
+  private async getPaths(vaultPath: string, workspacePath?: string | null, vaultId?: string | null) {
     let baseStorePath: string;
-    const vaultHash = md5(path.resolve(vaultPath));
-
-    if (workspacePath) {
-      baseStorePath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash);
+    
+    if (vaultId) {
+      // Shared metadata across machines: ~/.gemini-obsidian/vaults/<vaultId>
+      baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultId);
     } else {
-      // Hashed Global Cache: ~/.gemini-obsidian/vaults/<hash_of_vault_path>
-      baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultHash);
+      const vaultHash = md5(path.resolve(vaultPath));
+      if (workspacePath) {
+        baseStorePath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash);
+      } else {
+        // Hashed Global Cache: ~/.gemini-obsidian/vaults/<hash_of_vault_path>
+        baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultHash);
+      }
     }
 
     const dbPath = path.join(baseStorePath, 'lancedb');
@@ -92,8 +97,8 @@ export class VaultIndexer {
     return { dbPath, hashPath };
   }
 
-  private async getDb(vaultPath: string, workspacePath?: string | null) {
-    const { dbPath } = await this.getPaths(vaultPath, workspacePath);
+  private async getDb(vaultPath: string, workspacePath?: string | null, vaultId?: string | null) {
+    const { dbPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
     if (this.db && this.currentDbPath === dbPath) {
       return this.db;
     }
@@ -102,13 +107,19 @@ export class VaultIndexer {
     return this.db;
   }
 
-  private async getTable(vaultPath: string, workspacePath?: string | null) {
-    const db = await this.getDb(vaultPath, workspacePath);
+  private async getTable(vaultPath: string, workspacePath?: string | null, vaultId?: string | null) {
+    const db = await this.getDb(vaultPath, workspacePath, vaultId);
     const tableNames = await db.tableNames();
     if (tableNames.includes('notes')) {
       return await db.openTable('notes');
     }
     return null;
+  }
+
+  private async writeHashesAtomic(hashPath: string, hashes: Record<string, string>) {
+    const tmpPath = `${hashPath}.tmp`;
+    await fs.writeFile(tmpPath, JSON.stringify(hashes), 'utf-8');
+    await fs.rename(tmpPath, hashPath);
   }
 
   private async embedWithFallback(
@@ -143,11 +154,11 @@ export class VaultIndexer {
     return recovered;
   }
 
-  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null) {
+  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null, vaultId?: string | null) {
     const release = await this.acquireLock();
     try {
       const normalizedPath = this.validatePath(relativePath);
-      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
       const embedder = Embedder.getInstance();
       const filePath = getSafeFilePath(vaultPath, relativePath);
 
@@ -163,7 +174,7 @@ export class VaultIndexer {
           hashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
       } catch { /* ignore */ }
 
-      const db = await this.getDb(vaultPath, workspacePath);
+      const db = await this.getDb(vaultPath, workspacePath, vaultId);
       const tableNames = await db.tableNames();
 
       if (textsToEmbed.length > 0) {
@@ -185,7 +196,7 @@ export class VaultIndexer {
           await table.optimize();
           
           hashes[normalizedPath] = contentHash;
-          await fs.writeFile(hashPath, JSON.stringify(hashes));
+          await this.writeHashesAtomic(hashPath, hashes);
           console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
           return { success: true, chunks: chunks.length };
       } else {
@@ -196,7 +207,7 @@ export class VaultIndexer {
               await table.optimize();
           }
           delete hashes[normalizedPath];
-          await fs.writeFile(hashPath, JSON.stringify(hashes));
+          await this.writeHashesAtomic(hashPath, hashes);
           return { success: true, chunks: 0, message: "File removed from index (no embeddable content)." };
       }
     } catch (err) {
@@ -207,12 +218,12 @@ export class VaultIndexer {
     }
   }
 
-  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null) {
+  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null, vaultId?: string | null) {
     const release = await this.acquireLock();
     try {
-      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
       const embedder = Embedder.getInstance();
-      const db = await this.getDb(vaultPath, workspacePath);
+      const db = await this.getDb(vaultPath, workspacePath, vaultId);
 
       // Find all markdown files (incorporating follow: true from upstream)
       const files = await glob('**/*.md', { cwd: vaultPath, absolute: true, follow: true });
@@ -333,7 +344,7 @@ export class VaultIndexer {
       // Early exit: nothing changed
       if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
         console.error('Index is up to date, no changes detected.');
-        await fs.writeFile(hashPath, JSON.stringify(currentHashes));
+        await this.writeHashesAtomic(hashPath, currentHashes);
         return { success: true, chunks: 0, message: 'Index up to date, no changes detected.' };
       }
 
@@ -462,7 +473,7 @@ export class VaultIndexer {
       }
 
       // Save updated hashes
-      await fs.writeFile(hashPath, JSON.stringify(currentHashes));
+      await this.writeHashesAtomic(hashPath, currentHashes);
 
       if (canIncremental) {
         console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
@@ -475,10 +486,10 @@ export class VaultIndexer {
     }
   }
 
-  public async search(query: string, vaultPath: string, limit: number = 5, workspacePath?: string | null) {
+  public async search(query: string, vaultPath: string, limit: number = 5, workspacePath?: string | null, vaultId?: string | null) {
     const release = await this.acquireLock();
     try {
-      const table = await this.getTable(vaultPath, workspacePath);
+      const table = await this.getTable(vaultPath, workspacePath, vaultId);
       if (!table) {
           return [];
       }
