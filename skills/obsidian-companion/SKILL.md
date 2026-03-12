@@ -20,7 +20,8 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 ### 1. Initialization
 
 - **Check Vault Path:** Before calling any tool, ensure you know the `vault_path`. If it's not provided in the current context or environment (`OBSIDIAN_VAULT_PATH`), ask the user: "Please provide the absolute path to your Obsidian Vault."
-- **Workspace Isolation:** If the user wants to keep the vector index outside their vault or isolated per project, you can use the `workspace_path` parameter in `obsidian_set_vault`, `obsidian_rag_index`, and `obsidian_rag_query`.
+- **Custom Metadata Storage:** If the user wants to store indexing data in a specific project directory instead of the global home directory, you can use the `workspace_path` parameter in `obsidian_set_vault`, `obsidian_rag_index`, and `obsidian_rag_query`.
+- **Shared Metadata Across Machines:** If the user syncs their vault (e.g., via Git, Dropbox, iCloud) and uses it on multiple computers with different absolute paths, they can use the `vault_id` parameter to ensure the same identifier is used for the metadata cache on each machine.
 - **First Time RAG:** If the user asks a semantic question (e.g., "Summarize my thoughts on AI"), try `obsidian_rag_query`. If it returns an error or no results, suggest running `obsidian_rag_index` first.
 
 ### 2. Retrieval Strategy
