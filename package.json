@@ -1,6 +1,6 @@
 {
   "name": "gemini-obsidian",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Obsidian Vault integration with local RAG capabilities",
   "main": "index.js",
   "scripts": {
