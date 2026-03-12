@@ -94,6 +94,23 @@ describe('VaultIndexer path resolution and storage', () => {
     expect(folders.length).toBe(1);
   });
 
+  it('rejects malicious vault_id with path traversal or separators', async () => {
+    const maliciousIds = ['../escape', 'foo/bar', 'vault\\id', '..', '/etc/passwd'];
+    
+    for (const maliciousId of maliciousIds) {
+      await expect(indexer.indexVault(vaultPath, false, workspacePath, maliciousId))
+        .rejects.toThrow('Invalid vault_id');
+    }
+
+    // Ensure no directories were created for malicious IDs
+    const vaultsDir = path.join(workspacePath, '.gemini-obsidian', 'vaults');
+    const exists = await fs.stat(vaultsDir).then(() => true).catch(() => false);
+    if (exists) {
+      const folders = await fs.readdir(vaultsDir);
+      expect(folders.length).toBe(0);
+    }
+  });
+
   it('uses hashed global cache when workspace_path is not provided', async () => {
     // Add a note long enough to be indexed
     await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a sufficiently long note to pass the minimum chunk size filter of forty characters.', 'utf-8');

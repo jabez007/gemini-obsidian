@@ -333,7 +333,9 @@ async function readStdin(): Promise<string> {
             if ('workspace_path' in parsedArgs) {
                 WORKSPACE_PATH = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
             }
-            VAULT_ID = (parsedArgs.vault_id || parsedArgs.id) ? String(parsedArgs.vault_id || parsedArgs.id) : null;
+            if ('vault_id' in parsedArgs || 'id' in parsedArgs) {
+                VAULT_ID = (parsedArgs.vault_id || parsedArgs.id) ? String(parsedArgs.vault_id || parsedArgs.id) : null;
+            }
             VAULT_PATH = vp;
             await indexer.reset();
             await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID);

@@ -75,7 +75,17 @@ export class VaultIndexer {
   private async getPaths(vaultPath: string, workspacePath?: string | null, vaultId?: string | null) {
     let baseStorePath: string;
     const resolvedVaultPath = path.resolve(vaultPath);
-    const vaultHash = vaultId || md5(resolvedVaultPath);
+    
+    // Sanitize vaultId if provided, only allowing safe alphanumeric characters/hex
+    let vaultHash: string;
+    if (vaultId) {
+      if (!/^[a-zA-Z0-9_\-]+$/.test(vaultId)) {
+        throw new Error(`Invalid vault_id: ${vaultId}. Only alphanumeric characters, underscores, and hyphens are allowed.`);
+      }
+      vaultHash = vaultId;
+    } else {
+      vaultHash = md5(resolvedVaultPath);
+    }
 
     if (workspacePath) {
       baseStorePath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash);
@@ -194,7 +204,11 @@ export class VaultIndexer {
       let previousHashes: Record<string, string> = {};
       if (!force) {
         try {
-          previousHashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
+          const rawHashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
+          // Normalize keys to POSIX-style to handle cross-platform sync
+          for (const key of Object.keys(rawHashes)) {
+            previousHashes[key.replace(/\\/g, '/')] = rawHashes[key];
+          }
         } catch { /* no previous hashes — will do full index */ }
       }
 
@@ -243,7 +257,8 @@ export class VaultIndexer {
           batch.map(async (filePath) => {
             try {
               const content = await fs.readFile(filePath, 'utf-8');
-              const relativePath = path.relative(vaultPath, filePath);
+              const relativePathRaw = path.relative(vaultPath, filePath);
+              const relativePath = relativePathRaw.replace(/\\/g, '/');
               const contentHash = md5(content);
 
               // Skip unchanged files in incremental mode
@@ -290,7 +305,10 @@ export class VaultIndexer {
 
       // Determine deleted files (in previous hashes but not in current file set)
       const existingRelativePaths = new Set<string>();
-      for (const f of files) existingRelativePaths.add(path.relative(vaultPath, f));
+      for (const f of files) {
+        const p = path.relative(vaultPath, f).replace(/\\/g, '/');
+        existingRelativePaths.add(p);
+      }
       const deletedPaths = Object.keys(previousHashes).filter(p => !existingRelativePaths.has(p));
 
       if (canIncremental) {

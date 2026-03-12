@@ -59,7 +59,7 @@ The first time you use a tool, gemini will ask to set `vault_path`. It will be c
   - Storage location:
     - If a **workspace path** is configured, metadata is stored in `<workspace_path>/.gemini-obsidian/vaults/<vault_identifier>/`.
     - Otherwise, it defaults to a **Hashed Global Cache** in `~/.gemini-obsidian/vaults/<vault_identifier>/`.
-- **Cache Reset**: If you suspect the index is corrupted or want a fresh start, you can manually delete the vault-specific folder (`.gemini-obsidian/vaults/<hash_of_vault_path>`) in your workspace or the corresponding entry in the global cache. The next time you run `/obsidian:index` or `obsidian_rag_index`, it will be recreated.
+- **Cache Reset**: If you suspect the index is corrupted or want a fresh start, you can manually delete the vault-specific folder (`.gemini-obsidian/vaults/<vault_identifier>`) in your workspace or the corresponding entry in the global cache. The next time you run `/obsidian:index` or `obsidian_rag_index`, it will be recreated.
 - **Module Not Found Error**: If you see an error like `Cannot find module '@lancedb/lancedb'`, it means the native dependencies were not installed. Run `npm install` in the extension directory as shown in the Installation section.
 - **Logs**: If you encounter issues, check the extension logs. Since this runs as an MCP server, errors are typically output to stderr.
 
