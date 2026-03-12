@@ -60380,9 +60380,18 @@ var VaultIndexer = class {
     }
     return normalized;
   }
-  async getPaths(vaultPath, workspacePath) {
+  async getPaths(vaultPath, workspacePath, vaultId) {
     let baseStorePath;
-    const vaultHash = (0, import_md52.default)(path5.resolve(vaultPath));
+    const resolvedVaultPath = path5.resolve(vaultPath);
+    let vaultHash;
+    if (vaultId) {
+      if (!/^[a-zA-Z0-9_\-]+$/.test(vaultId)) {
+        throw new Error(`Invalid vault_id: ${vaultId}. Only alphanumeric characters, underscores, and hyphens are allowed.`);
+      }
+      vaultHash = vaultId;
+    } else {
+      vaultHash = (0, import_md52.default)(resolvedVaultPath);
+    }
     if (workspacePath) {
       baseStorePath = path5.join(workspacePath, ".gemini-obsidian", "vaults", vaultHash);
     } else {
@@ -60393,8 +60402,13 @@ var VaultIndexer = class {
     await fs3.mkdir(baseStorePath, { recursive: true });
     return { dbPath, hashPath };
   }
-  async getDb(vaultPath, workspacePath) {
-    const { dbPath } = await this.getPaths(vaultPath, workspacePath);
+  async writeHashesAtomic(hashPath, hashes) {
+    const tempPath = `${hashPath}.tmp`;
+    await fs3.writeFile(tempPath, JSON.stringify(hashes));
+    await fs3.rename(tempPath, hashPath);
+  }
+  async getDb(vaultPath, workspacePath, vaultId) {
+    const { dbPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
     if (this.db && this.currentDbPath === dbPath) {
       return this.db;
     }
@@ -60402,19 +60416,19 @@ var VaultIndexer = class {
     this.currentDbPath = dbPath;
     return this.db;
   }
-  async getTable(vaultPath, workspacePath) {
-    const db = await this.getDb(vaultPath, workspacePath);
+  async getTable(vaultPath, workspacePath, vaultId) {
+    const db = await this.getDb(vaultPath, workspacePath, vaultId);
     const tableNames = await db.tableNames();
     if (tableNames.includes("notes")) {
       return await db.openTable("notes");
     }
     return null;
   }
-  async indexFile(vaultPath, relativePath, workspacePath) {
+  async indexFile(vaultPath, relativePath, workspacePath, vaultId) {
     const release = await this.acquireLock();
     try {
       const normalizedPath = this.validatePath(relativePath);
-      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
       const embedder = Embedder.getInstance();
       const filePath = getSafeFilePath(vaultPath, relativePath);
       const content = await fs3.readFile(filePath, "utf-8");
@@ -60426,7 +60440,7 @@ var VaultIndexer = class {
         hashes = JSON.parse(await fs3.readFile(hashPath, "utf-8"));
       } catch {
       }
-      const db = await this.getDb(vaultPath, workspacePath);
+      const db = await this.getDb(vaultPath, workspacePath, vaultId);
       const tableNames = await db.tableNames();
       if (textsToEmbed.length > 0) {
         const chunks = await this.embedWithFallback(embedder, textsToEmbed, chunkMetadata);
@@ -60442,7 +60456,7 @@ var VaultIndexer = class {
           await table.add(chunkRows);
         }
         hashes[normalizedPath] = contentHash;
-        await fs3.writeFile(hashPath, JSON.stringify(hashes));
+        await this.writeHashesAtomic(hashPath, hashes);
         console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
         return { success: true, chunks: chunks.length };
       } else {
@@ -60451,7 +60465,7 @@ var VaultIndexer = class {
           await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
         }
         delete hashes[normalizedPath];
-        await fs3.writeFile(hashPath, JSON.stringify(hashes));
+        await this.writeHashesAtomic(hashPath, hashes);
         return { success: true, chunks: 0, message: "File removed from index (no embeddable content)." };
       }
     } catch (err) {
@@ -60461,18 +60475,21 @@ var VaultIndexer = class {
       release();
     }
   }
-  async indexVault(vaultPath, force = false, workspacePath) {
+  async indexVault(vaultPath, force = false, workspacePath, vaultId) {
     const release = await this.acquireLock();
     try {
-      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
       const embedder = Embedder.getInstance();
-      const db = await this.getDb(vaultPath, workspacePath);
+      const db = await this.getDb(vaultPath, workspacePath, vaultId);
       const files = await glob("**/*.md", { cwd: vaultPath, absolute: true, follow: true });
       console.error(`Found ${files.length} notes in ${vaultPath}`);
       let previousHashes = {};
       if (!force) {
         try {
-          previousHashes = JSON.parse(await fs3.readFile(hashPath, "utf-8"));
+          const rawHashes = JSON.parse(await fs3.readFile(hashPath, "utf-8"));
+          for (const key of Object.keys(rawHashes)) {
+            previousHashes[key.replace(/\\/g, "/")] = rawHashes[key];
+          }
         } catch {
         }
       }
@@ -60516,7 +60533,8 @@ var VaultIndexer = class {
           batch.map(async (filePath) => {
             try {
               const content = await fs3.readFile(filePath, "utf-8");
-              const relativePath = path5.relative(vaultPath, filePath);
+              const relativePathRaw = path5.relative(vaultPath, filePath);
+              const relativePath = relativePathRaw.replace(/\\/g, "/");
               const contentHash = (0, import_md52.default)(content);
               if (canIncremental && previousHashes[relativePath] === contentHash) {
                 return null;
@@ -60553,7 +60571,10 @@ var VaultIndexer = class {
         renderReadProgress();
       }
       const existingRelativePaths = /* @__PURE__ */ new Set();
-      for (const f of files) existingRelativePaths.add(path5.relative(vaultPath, f));
+      for (const f of files) {
+        const p = path5.relative(vaultPath, f).replace(/\\/g, "/");
+        existingRelativePaths.add(p);
+      }
       const deletedPaths = Object.keys(previousHashes).filter((p) => !existingRelativePaths.has(p));
       if (canIncremental) {
         console.error(`Incremental: ${changedPaths.length} changed, ${deletedPaths.length} deleted, ${skippedFiles} unchanged`);
@@ -60562,7 +60583,7 @@ var VaultIndexer = class {
       }
       if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
         console.error("Index is up to date, no changes detected.");
-        await fs3.writeFile(hashPath, JSON.stringify(currentHashes));
+        await this.writeHashesAtomic(hashPath, currentHashes);
         return { success: true, chunks: 0, message: "Index up to date, no changes detected." };
       }
       if (!canIncremental && allTexts.length === 0) {
@@ -60664,7 +60685,7 @@ var VaultIndexer = class {
           await persistChunks(pendingChunks);
         }
       }
-      await fs3.writeFile(hashPath, JSON.stringify(currentHashes));
+      await this.writeHashesAtomic(hashPath, currentHashes);
       if (canIncremental) {
         console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
       } else {
@@ -60675,10 +60696,10 @@ var VaultIndexer = class {
       release();
     }
   }
-  async search(query, vaultPath, limit = 5, workspacePath) {
+  async search(query, vaultPath, limit = 5, workspacePath, vaultId) {
     const release = await this.acquireLock();
     try {
-      const table = await this.getTable(vaultPath, workspacePath);
+      const table = await this.getTable(vaultPath, workspacePath, vaultId);
       if (!table) {
         return [];
       }
@@ -60742,13 +60763,15 @@ try {
 }
 var VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || null;
 var WORKSPACE_PATH = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
+var VAULT_ID = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
 var indexer = new VaultIndexer();
 var CONFIG_PATH = path6.join(os2.homedir(), ".gemini-obsidian.config.json");
-async function saveConfig(vaultPath, workspacePath) {
+async function saveConfig(vaultPath, workspacePath, vaultId) {
   try {
     await fs4.writeFile(CONFIG_PATH, JSON.stringify({
       vault_path: vaultPath,
-      workspace_path: workspacePath || null
+      workspace_path: workspacePath || null,
+      vault_id: vaultId || null
     }), "utf-8");
   } catch (e) {
     console.error("Failed to save config", e);
@@ -60760,10 +60783,11 @@ async function loadConfig2() {
     const config2 = JSON.parse(data);
     return {
       vault_path: config2.vault_path || null,
-      workspace_path: config2.workspace_path || null
+      workspace_path: config2.workspace_path || null,
+      vault_id: config2.vault_id || null
     };
   } catch {
-    return { vault_path: null, workspace_path: null };
+    return { vault_path: null, workspace_path: null, vault_id: null };
   }
 }
 function getVaultPath(providedPath) {
@@ -60775,6 +60799,9 @@ function getVaultPath(providedPath) {
 }
 function getWorkspacePath(providedPath) {
   return providedPath || WORKSPACE_PATH || null;
+}
+function getVaultId(providedId) {
+  return providedId || VAULT_ID || null;
 }
 async function readStdin() {
   return new Promise((resolve3, reject) => {
@@ -60800,6 +60827,7 @@ async function readStdin() {
   const config2 = await loadConfig2();
   VAULT_PATH = VAULT_PATH || config2.vault_path;
   WORKSPACE_PATH = WORKSPACE_PATH || config2.workspace_path;
+  VAULT_ID = VAULT_ID || config2.vault_id;
   const args = process.argv.slice(2);
   const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_append_daily_log", "obsidian_replace_section", "obsidian_insert_at_heading"];
   if (args.length > 0 && knownTools.includes(args[0])) {
@@ -60878,7 +60906,7 @@ async function readStdin() {
         }
         result = matches.join("\n");
       } else if (toolName === "obsidian_rag_index") {
-        let vp, fp, wp, hpForce;
+        let vp, fp, wp, hpForce, vid;
         if (parsedArgs.hook) {
           const inputStr = await readStdin();
           if (!inputStr) {
@@ -60888,19 +60916,21 @@ async function readStdin() {
           vp = getVaultPath(input.tool_input?.vault_path || VAULT_PATH);
           fp = input.tool_input?.file_path;
           wp = getWorkspacePath(input.tool_input?.workspace_path || WORKSPACE_PATH);
+          vid = getVaultId(input.tool_input?.vault_id || VAULT_ID);
           hpForce = input.tool_input?.force_reindex === true;
         } else {
           vp = getVaultPath(parsedArgs.vault_path);
           fp = parsedArgs.file_path ? String(parsedArgs.file_path) : null;
           wp = getWorkspacePath(parsedArgs.workspace_path);
+          vid = getVaultId(parsedArgs.vault_id);
           hpForce = false;
         }
         const force = parsedArgs.force_reindex === true || parsedArgs.force === true || hpForce;
         let res;
         if (fp) {
-          res = await indexer.indexFile(vp, String(fp), wp);
+          res = await indexer.indexFile(vp, String(fp), wp, vid);
         } else {
-          res = await indexer.indexVault(vp, force, wp);
+          res = await indexer.indexVault(vp, force, wp, vid);
         }
         result = JSON.stringify(res);
       } else if (toolName === "obsidian_rag_query") {
@@ -60908,7 +60938,8 @@ async function readStdin() {
         const limit = Number(parsedArgs.limit) || 5;
         const vp = getVaultPath(parsedArgs.vault_path);
         const wp = getWorkspacePath(parsedArgs.workspace_path);
-        const res = await indexer.search(query, vp, limit, wp);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const res = await indexer.search(query, vp, limit, wp, vid);
         result = res.map((r) => `File: ${r.path}
 Content: ${r.text}`).join("\n---\n");
       } else if (toolName === "obsidian_get_backlinks") {
@@ -61014,20 +61045,26 @@ Content: ${r.text}`).join("\n---\n");
         await fs4.writeFile(filePath, fileContent, "utf-8");
         result = `Appended to daily note under "${heading}"`;
       } else if (toolName === "obsidian_set_vault") {
-        const vp = String(parsedArgs.path);
+        const vp = String(parsedArgs.path || parsedArgs.vault_path || "");
         if ("workspace_path" in parsedArgs) {
           WORKSPACE_PATH = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
         }
+        if ("vault_id" in parsedArgs || "id" in parsedArgs) {
+          VAULT_ID = parsedArgs.vault_id || parsedArgs.id ? String(parsedArgs.vault_id || parsedArgs.id) : null;
+        }
         VAULT_PATH = vp;
         await indexer.reset();
-        await saveConfig(VAULT_PATH, WORKSPACE_PATH);
-        result = `Vault path set to: ${vp}` + (WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : "");
+        await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID);
+        result = `Vault path set to: ${vp}` + (WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : "") + (VAULT_ID ? ` with ID: ${VAULT_ID}` : "");
       } else {
         console.error(`Unknown tool: ${toolName}`);
         process.exit(1);
       }
-      console.log(result);
-      process.exit(0);
+      if (result !== void 0) {
+        console.log(result);
+        process.exit(0);
+      }
+      process.exit(1);
     } catch (error2) {
       console.error(error2.message);
       process.exit(1);
@@ -61049,12 +61086,13 @@ Content: ${r.text}`).join("\n---\n");
       tools: [
         {
           name: "obsidian_set_vault",
-          description: "Set the default Obsidian vault path and optional workspace path for this session.",
+          description: "Set the default Obsidian vault path and optional workspace/ID for this session.",
           inputSchema: {
             type: "object",
             properties: {
               path: { type: "string", description: "Absolute path to the Obsidian vault" },
-              workspace_path: { type: "string", description: "Optional absolute path to the workspace root where .gemini-obsidian should be created." }
+              workspace_path: { type: "string", description: "Optional absolute path to the workspace root where .gemini-obsidian should be created." },
+              vault_id: { type: "string", description: "Optional unique identifier for this vault to share metadata across machines." }
             },
             required: ["path"]
           }
@@ -61138,6 +61176,7 @@ Content: ${r.text}`).join("\n---\n");
             properties: {
               vault_path: { type: "string", description: "Optional vault path override" },
               workspace_path: { type: "string", description: "Optional workspace path override" },
+              vault_id: { type: "string", description: "Optional unique identifier for the vault" },
               file_path: { type: "string", description: "Relative path to a specific note to re-index" },
               force_reindex: { type: "boolean", description: "Force full re-index, ignoring cached file hashes (default: false)" }
             }
@@ -61152,7 +61191,8 @@ Content: ${r.text}`).join("\n---\n");
               query: { type: "string", description: "Question or query to ask your notes" },
               limit: { type: "number", description: "Number of chunks to retrieve (default 5)" },
               vault_path: { type: "string", description: "Optional vault path override" },
-              workspace_path: { type: "string", description: "Optional workspace path override" }
+              workspace_path: { type: "string", description: "Optional workspace path override" },
+              vault_id: { type: "string", description: "Optional unique identifier for the vault" }
             },
             required: ["query"]
           }
@@ -61261,9 +61301,12 @@ Content: ${r.text}`).join("\n---\n");
         if (args2 && "workspace_path" in args2) {
           WORKSPACE_PATH = args2.workspace_path ? String(args2.workspace_path) : null;
         }
+        if (args2 && "vault_id" in args2) {
+          VAULT_ID = args2.vault_id ? String(args2.vault_id) : null;
+        }
         await indexer.reset();
-        await saveConfig(VAULT_PATH, WORKSPACE_PATH);
-        return { content: [{ type: "text", text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ""}` }] };
+        await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID);
+        return { content: [{ type: "text", text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ""}${VAULT_ID ? ` with ID: ${VAULT_ID}` : ""}` }] };
       }
       if (name2 === "obsidian_list_notes") {
         const vp = getVaultPath(args2?.vault_path);
@@ -61334,13 +61377,14 @@ Content: ${r.text}`).join("\n---\n");
       if (name2 === "obsidian_rag_index") {
         const vp = getVaultPath(args2?.vault_path);
         const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
         const fp = args2?.file_path ? String(args2.file_path) : null;
         const force = args2?.force_reindex === true;
         let result;
         if (fp) {
-          result = await indexer.indexFile(vp, fp, wp);
+          result = await indexer.indexFile(vp, fp, wp, vid);
         } else {
-          result = await indexer.indexVault(vp, force, wp);
+          result = await indexer.indexVault(vp, force, wp, vid);
         }
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       }
@@ -61349,7 +61393,8 @@ Content: ${r.text}`).join("\n---\n");
         const limit = Number(args2?.limit) || 5;
         const vp = getVaultPath(args2?.vault_path);
         const wp = getWorkspacePath(args2?.workspace_path);
-        const results = await indexer.search(query, vp, limit, wp);
+        const vid = getVaultId(args2?.vault_id);
+        const results = await indexer.search(query, vp, limit, wp, vid);
         const formatted = results.map(
           (r) => `---
 File: ${r.path}
