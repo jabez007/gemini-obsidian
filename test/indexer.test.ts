@@ -70,6 +70,30 @@ describe('VaultIndexer path resolution and storage', () => {
     expect(hashExists).toBe(true);
   });
 
+  it('uses vault_id when provided, overriding MD5 hash of vault path', async () => {
+    // Add a note long enough to be indexed
+    await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a sufficiently long note to pass the minimum chunk size filter of forty characters.', 'utf-8');
+    
+    const customVaultId = 'my-shared-vault-id';
+    await indexer.indexVault(vaultPath, false, workspacePath, customVaultId);
+
+    // Vault hash should be our custom ID, not the MD5 hash
+    const expectedDbPath = path.join(workspacePath, '.gemini-obsidian', 'vaults', customVaultId, 'lancedb');
+    const expectedHashPath = path.join(workspacePath, '.gemini-obsidian', 'vaults', customVaultId, 'file-hashes.json');
+
+    const dbExists = await fs.stat(expectedDbPath).then(() => true).catch(() => false);
+    const hashExists = await fs.stat(expectedHashPath).then(() => true).catch(() => false);
+
+    expect(dbExists).toBe(true);
+    expect(hashExists).toBe(true);
+
+    // Ensure it used exactly our ID in the vaults directory
+    const vaultsDir = path.join(workspacePath, '.gemini-obsidian', 'vaults');
+    const folders = await fs.readdir(vaultsDir);
+    expect(folders).toContain(customVaultId);
+    expect(folders.length).toBe(1);
+  });
+
   it('uses hashed global cache when workspace_path is not provided', async () => {
     // Add a note long enough to be indexed
     await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a sufficiently long note to pass the minimum chunk size filter of forty characters.', 'utf-8');
