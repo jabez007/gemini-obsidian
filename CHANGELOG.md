@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-03-19
+
+### Features
+- feat(rag): implement workspace-aware metadata storage for RAG index and hashes
+- feat(obsidian): add support for multiple isolated vaults using hashed global cache
+- feat(config): persist vault/workspace paths; allow environment variables to override persisted values at load time
+- feat(rag): support vault_id for shared metadata across machines
+
+### Fixed
+- fix(rag): implement atomic hash updates to prevent stale index on partial failures
+- fix(rag): harden path validation to support Windows separators and Unicode filenames
+- fix(rag): ensure stale database connections are cleared when switching vaults
+
+### Refactor
+- refactor(rag): implement thread-safe locking for database operations
+- refactor(rag): decouple storage path resolution from singleton state
+
 ## [1.6.0] - 2026-03-19
 
 ### Features
@@ -12,23 +29,10 @@ All notable changes to this project will be documented in this file.
 ### Documentation
 - docs: update README and obsidian-companion skill guidelines
 
-
 ## [1.5.0] - 2026-03-12
 
 ### Features
-- feat(rag): implement workspace-aware metadata storage for RAG index and hashes
-- feat(obsidian): add support for multiple isolated vaults using hashed global cache
-- feat(config): persist vault/workspace paths; allow environment variables to override persisted values at load time
 - feat: follow symlinks to support indexing external files
-
-### Fixed
-- fix(rag): implement atomic hash updates to prevent stale index on partial failures
-- fix(rag): harden path validation to support Windows separators and Unicode filenames
-- fix(rag): ensure stale database connections are cleared when switching vaults
-
-### Refactor
-- refactor(rag): implement thread-safe locking for database operations
-- refactor(rag): decouple storage path resolution from singleton state
 
 ### Build & Maintenance
 - build(deps): update mcp-related dependencies and rebuild dist
