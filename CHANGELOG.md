@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-03-19
+
+### Features
+- feat: add inline text replacement and broken link detection tools
+- feat: add session initialization and frontmatter validation hooks
+- feat: add new vault management skills (knowledge, link-audit, moc-update)
+
+### Documentation
+- docs: update README and obsidian-companion skill guidelines
+
+
 ## [1.5.0] - 2026-03-12
 
 ### Features

@@ -1,3 +1,30 @@
+# Release v1.6.0
+
+## Summary
+This release introduces advanced vault management capabilities, including broken link detection, surgical inline text replacement, and automated workspace hooks. We have also added three new specialized skills to enhance long-term knowledge management and vault health.
+
+## New Features
+- **Vault Health & Repair**:
+  - `obsidian_get_broken_links`: Automatically identifies all wikilinks in the vault that point to non-existent notes.
+  - `obsidian_replace_in_note`: Enables targeted, surgical text replacement for repairing broken links without rewriting entire files.
+  - Upgraded `obsidian_update_frontmatter` to support single-key and batch updates.
+
+- **Automated Lifecycle Hooks**:
+  - **Session Initialization**: Automatically reports vault status and refreshes the RAG index when a Gemini session starts.
+  - **Frontmatter Validation**: Prevents the creation of notes with missing required metadata fields via configurable schema rules.
+  - **Note Re-indexing**: Specialized re-indexing script for more efficient single-note updates.
+
+- **New AI Skills**:
+  - `knowledge`: Tools for promoting cross-project findings to the global engineering vault.
+  - `link-audit`: Comprehensive audit of broken links, orphaned notes, and semantic clusters.
+  - `moc-update`: Automated suggestions for updating Maps of Content (MOCs) after note creation.
+
+## Developer Experience
+- **Expanded Test Coverage**: New tests for batch frontmatter updates, surgical replacement logic, and recursive note listing.
+- **Improved Utilities**: Refactored internal file handling to support robust recursive path patterns.
+
+---
+
 # Release v1.4.0
 
 ## Summary
