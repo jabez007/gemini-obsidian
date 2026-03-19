@@ -60794,10 +60794,10 @@ try {
 var VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || null;
 var WORKSPACE_PATH = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
 var VAULT_ID = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
-var KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",") : ["Engineering"];
-var MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",") : ["MOCs"];
-var DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER || "Daily Notes";
-var IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",") : ["Daily Notes"];
+var KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : ["Engineering"];
+var MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : ["MOCs"];
+var DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : "Daily Notes";
+var IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : ["Daily Notes"];
 var indexer = new VaultIndexer();
 var CONFIG_PATH = path6.join(os2.homedir(), ".gemini-obsidian.config.json");
 async function saveConfig(vaultPath, workspacePath, vaultId, knowledgeFolders, mocFolders, dailyNoteFolder, ignoredFolders) {
@@ -60878,10 +60878,10 @@ async function readStdin() {
   VAULT_PATH = VAULT_PATH || config2.vault_path;
   WORKSPACE_PATH = WORKSPACE_PATH || config2.workspace_path;
   VAULT_ID = VAULT_ID || config2.vault_id;
-  KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",") : config2.knowledge_folders;
-  MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",") : config2.moc_folders;
-  DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER || config2.daily_note_folder;
-  IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",") : config2.ignored_folders;
+  KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : config2.knowledge_folders;
+  MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : config2.moc_folders;
+  DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : config2.daily_note_folder;
+  IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : config2.ignored_folders;
   const args = process.argv.slice(2);
   const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_get_config", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_append_daily_log", "obsidian_replace_section", "obsidian_insert_at_heading", "obsidian_replace_in_note", "obsidian_get_broken_links", "validate_frontmatter"];
   if (args.length > 0 && knownTools.includes(args[0])) {

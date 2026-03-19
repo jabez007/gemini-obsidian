@@ -51,10 +51,10 @@ import {
 let VAULT_PATH: string | null = process.env.OBSIDIAN_VAULT_PATH || null;
 let WORKSPACE_PATH: string | null = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
 let VAULT_ID: string | null = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
-let KNOWLEDGE_FOLDERS: string[] = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(',') : ['Engineering'];
-let MOC_FOLDERS: string[] = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(',') : ['MOCs'];
-let DAILY_NOTE_FOLDER: string = process.env.OBSIDIAN_DAILY_NOTE_FOLDER || 'Daily Notes';
-let IGNORED_FOLDERS: string[] = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(',') : ['Daily Notes'];
+let KNOWLEDGE_FOLDERS: string[] = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(',').map(s => s.trim()).filter(Boolean) : ['Engineering'];
+let MOC_FOLDERS: string[] = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(',').map(s => s.trim()).filter(Boolean) : ['MOCs'];
+let DAILY_NOTE_FOLDER: string = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : 'Daily Notes';
+let IGNORED_FOLDERS: string[] = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(',').map(s => s.trim()).filter(Boolean) : ['Daily Notes'];
 
 const indexer = new VaultIndexer();
 const CONFIG_PATH = path.join(os.homedir(), '.gemini-obsidian.config.json');
@@ -161,10 +161,10 @@ async function readStdin(): Promise<string> {
   VAULT_PATH = VAULT_PATH || config.vault_path;
   WORKSPACE_PATH = WORKSPACE_PATH || config.workspace_path;
   VAULT_ID = VAULT_ID || config.vault_id;
-  KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(',') : config.knowledge_folders;
-  MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(',') : config.moc_folders;
-  DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER || config.daily_note_folder;
-  IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(',') : config.ignored_folders;
+  KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(',').map(s => s.trim()).filter(Boolean) : config.knowledge_folders;
+  MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(',').map(s => s.trim()).filter(Boolean) : config.moc_folders;
+  DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : config.daily_note_folder;
+  IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(',').map(s => s.trim()).filter(Boolean) : config.ignored_folders;
 
   // Handle CLI args for one-shot mode
   const args = process.argv.slice(2);
