@@ -61191,26 +61191,30 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         if ("vault_id" in parsedArgs || "id" in parsedArgs) {
           VAULT_ID = parsedArgs.vault_id || parsedArgs.id ? String(parsedArgs.vault_id || parsedArgs.id) : null;
         }
-        if ("primary_knowledge_folder" in parsedArgs) {
-          PRIMARY_KNOWLEDGE_FOLDER = String(parsedArgs.primary_knowledge_folder);
+        if ("knowledge_folders" in parsedArgs) {
+          KNOWLEDGE_FOLDERS = String(parsedArgs.knowledge_folders).split(",");
         }
-        if ("moc_folder" in parsedArgs) {
-          MOC_FOLDER = String(parsedArgs.moc_folder);
+        if ("moc_folders" in parsedArgs) {
+          MOC_FOLDERS = String(parsedArgs.moc_folders).split(",");
+        }
+        if ("daily_note_folder" in parsedArgs) {
+          DAILY_NOTE_FOLDER = String(parsedArgs.daily_note_folder);
         }
         if ("ignored_folders" in parsedArgs) {
           IGNORED_FOLDERS = String(parsedArgs.ignored_folders).split(",");
         }
         VAULT_PATH = vp;
         await indexer.reset();
-        await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID, PRIMARY_KNOWLEDGE_FOLDER, MOC_FOLDER, IGNORED_FOLDERS);
+        await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID, KNOWLEDGE_FOLDERS, MOC_FOLDERS, DAILY_NOTE_FOLDER, IGNORED_FOLDERS);
         result = `Vault path set to: ${vp}`;
       } else if (toolName === "obsidian_get_config") {
         result = JSON.stringify({
           vault_path: VAULT_PATH,
           workspace_path: WORKSPACE_PATH,
           vault_id: VAULT_ID,
-          primary_knowledge_folder: PRIMARY_KNOWLEDGE_FOLDER,
-          moc_folder: MOC_FOLDER,
+          knowledge_folders: KNOWLEDGE_FOLDERS,
+          moc_folders: MOC_FOLDERS,
+          daily_note_folder: DAILY_NOTE_FOLDER,
           ignored_folders: IGNORED_FOLDERS
         }, null, 2);
       } else {
