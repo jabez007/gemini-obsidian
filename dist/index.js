@@ -60791,13 +60791,17 @@ try {
 `);
   process.exit(1);
 }
+var DEFAULT_KNOWLEDGE_FOLDERS = ["Engineering"];
+var DEFAULT_MOC_FOLDERS = ["MOCs"];
+var DEFAULT_DAILY_NOTE_FOLDER = "Daily Notes";
+var DEFAULT_IGNORED_FOLDERS = ["Daily Notes"];
 var VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || null;
 var WORKSPACE_PATH = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
 var VAULT_ID = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
-var KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : ["Engineering"];
-var MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : ["MOCs"];
-var DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : "Daily Notes";
-var IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : ["Daily Notes"];
+var KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_KNOWLEDGE_FOLDERS;
+var MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_MOC_FOLDERS;
+var DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : DEFAULT_DAILY_NOTE_FOLDER;
+var IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_IGNORED_FOLDERS;
 var indexer = new VaultIndexer();
 var CONFIG_PATH = path6.join(os2.homedir(), ".gemini-obsidian.config.json");
 async function saveConfig(vaultPath, workspacePath, vaultId, knowledgeFolders, mocFolders, dailyNoteFolder, ignoredFolders) {
@@ -60823,20 +60827,20 @@ async function loadConfig2() {
       vault_path: config2.vault_path || null,
       workspace_path: config2.workspace_path || null,
       vault_id: config2.vault_id || null,
-      knowledge_folders: config2.knowledge_folders || ["Engineering"],
-      moc_folders: config2.moc_folders || ["MOCs"],
-      daily_note_folder: config2.daily_note_folder || "Daily Notes",
-      ignored_folders: config2.ignored_folders || ["Daily Notes"]
+      knowledge_folders: config2.knowledge_folders || DEFAULT_KNOWLEDGE_FOLDERS,
+      moc_folders: config2.moc_folders || DEFAULT_MOC_FOLDERS,
+      daily_note_folder: config2.daily_note_folder || DEFAULT_DAILY_NOTE_FOLDER,
+      ignored_folders: config2.ignored_folders || DEFAULT_IGNORED_FOLDERS
     };
   } catch {
     return {
       vault_path: null,
       workspace_path: null,
       vault_id: null,
-      knowledge_folders: ["Engineering"],
-      moc_folders: ["MOCs"],
-      daily_note_folder: "Daily Notes",
-      ignored_folders: ["Daily Notes"]
+      knowledge_folders: DEFAULT_KNOWLEDGE_FOLDERS,
+      moc_folders: DEFAULT_MOC_FOLDERS,
+      daily_note_folder: DEFAULT_DAILY_NOTE_FOLDER,
+      ignored_folders: DEFAULT_IGNORED_FOLDERS
     };
   }
 }
