@@ -60883,7 +60883,7 @@ async function readStdin() {
   DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER || config2.daily_note_folder;
   IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",") : config2.ignored_folders;
   const args = process.argv.slice(2);
-  const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_append_daily_log", "obsidian_replace_section", "obsidian_insert_at_heading", "obsidian_replace_in_note", "obsidian_get_broken_links", "validate_frontmatter"];
+  const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_get_config", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_append_daily_log", "obsidian_replace_section", "obsidian_insert_at_heading", "obsidian_replace_in_note", "obsidian_get_broken_links", "validate_frontmatter"];
   if (args.length > 0 && knownTools.includes(args[0])) {
     const toolName = args[0];
     const toolArgs = args.slice(1);
@@ -60927,9 +60927,8 @@ async function readStdin() {
       } else if (toolName === "obsidian_get_daily_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, "Daily Notes")).catch(() => null) ? "Daily Notes" : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         try {
           result = await fs4.readFile(filePath, "utf-8");
         } catch (e) {
@@ -61073,9 +61072,8 @@ Content: ${r.text}`).join("\n---\n");
         const heading = String(parsedArgs.heading);
         const content = String(parsedArgs.content);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, "Daily Notes")).catch(() => null) ? "Daily Notes" : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         let fileContent = "";
         try {
           fileContent = await fs4.readFile(filePath, "utf-8");
@@ -61561,9 +61559,8 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
       if (name2 === "obsidian_get_daily_note") {
         const vp = getVaultPath(args2?.vault_path);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, DAILY_NOTE_FOLDER)).catch(() => null) ? DAILY_NOTE_FOLDER : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         let content = "";
         try {
           content = await fs4.readFile(filePath, "utf-8");
@@ -61699,9 +61696,8 @@ Content: ${r.text}
         const heading = String(args2?.heading);
         const content = String(args2?.content);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, DAILY_NOTE_FOLDER)).catch(() => null) ? DAILY_NOTE_FOLDER : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         let fileContent = "";
         try {
           fileContent = await fs4.readFile(filePath, "utf-8");

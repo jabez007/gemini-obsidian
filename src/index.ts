@@ -170,7 +170,7 @@ async function readStdin(): Promise<string> {
   const args = process.argv.slice(2);
   
   // If arguments start with a tool name (simple heuristic)
-  const knownTools = ['obsidian_list_notes', 'obsidian_read_note', 'obsidian_search_notes', 'obsidian_rag_index', 'obsidian_rag_query', 'obsidian_set_vault', 'obsidian_create_note', 'obsidian_append_note', 'obsidian_get_daily_note', 'obsidian_get_backlinks', 'obsidian_get_links', 'obsidian_move_note', 'obsidian_update_frontmatter', 'obsidian_append_daily_log', 'obsidian_replace_section', 'obsidian_insert_at_heading', 'obsidian_replace_in_note', 'obsidian_get_broken_links', 'validate_frontmatter'];
+  const knownTools = ['obsidian_list_notes', 'obsidian_read_note', 'obsidian_search_notes', 'obsidian_rag_index', 'obsidian_rag_query', 'obsidian_set_vault', 'obsidian_get_config', 'obsidian_create_note', 'obsidian_append_note', 'obsidian_get_daily_note', 'obsidian_get_backlinks', 'obsidian_get_links', 'obsidian_move_note', 'obsidian_update_frontmatter', 'obsidian_append_daily_log', 'obsidian_replace_section', 'obsidian_insert_at_heading', 'obsidian_replace_in_note', 'obsidian_get_broken_links', 'validate_frontmatter'];
   
   if (args.length > 0 && knownTools.includes(args[0])) {
     const toolName = args[0];
@@ -216,9 +216,8 @@ async function readStdin(): Promise<string> {
         } else if (toolName === 'obsidian_get_daily_note') {
              const vp = getVaultPath(parsedArgs.vault_path);
              const dateStr = new Date().toISOString().split('T')[0];
-             const dailyFolder = (await fs.stat(path.join(vp, 'Daily Notes')).catch(() => null)) ? 'Daily Notes' : '';
              const fileName = `${dateStr}.md`;
-             const filePath = path.join(vp, dailyFolder, fileName);
+             const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
              try {
                  result = await fs.readFile(filePath, 'utf-8');
              } catch (e) {
@@ -360,9 +359,8 @@ async function readStdin(): Promise<string> {
             const heading = String(parsedArgs.heading);
             const content = String(parsedArgs.content);
             const dateStr = new Date().toISOString().split('T')[0];
-            const dailyFolder = (await fs.stat(path.join(vp, 'Daily Notes')).catch(() => null)) ? 'Daily Notes' : '';
             const fileName = `${dateStr}.md`;
-            const filePath = path.join(vp, dailyFolder, fileName);
+            const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
             let fileContent = '';
             try { fileContent = await fs.readFile(filePath, 'utf-8'); } catch (e) {
                 await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -853,9 +851,8 @@ async function readStdin(): Promise<string> {
       if (name === 'obsidian_get_daily_note') {
            const vp = getVaultPath(args?.vault_path as string);
            const dateStr = new Date().toISOString().split('T')[0];
-           const dailyFolder = (await fs.stat(path.join(vp, DAILY_NOTE_FOLDER)).catch(() => null)) ? DAILY_NOTE_FOLDER : '';
            const fileName = `${dateStr}.md`;
-           const filePath = path.join(vp, dailyFolder, fileName);
+           const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
            let content = '';
            try {
                content = await fs.readFile(filePath, 'utf-8');
@@ -991,9 +988,8 @@ async function readStdin(): Promise<string> {
           const content = String(args?.content);
 
           const dateStr = new Date().toISOString().split('T')[0];
-          const dailyFolder = (await fs.stat(path.join(vp, DAILY_NOTE_FOLDER)).catch(() => null)) ? DAILY_NOTE_FOLDER : '';
           const fileName = `${dateStr}.md`;
-          const filePath = path.join(vp, dailyFolder, fileName);
+          const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
 
           let fileContent = '';
           try {

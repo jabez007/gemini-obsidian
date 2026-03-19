@@ -14,7 +14,7 @@ Identify knowledge that has crystallized across multiple projects and promote it
 
 1. **Get vault config** — Call `obsidian_get_config` to identify `knowledge_folders` and `ignored_folders`.
 
-2. **Scan for candidates** — Call `obsidian_list_notes`. Filter results to identify notes that seem like project-specific knowledge (e.g., in `working/*/knowledge/` or tagged `#knowledge`).
+2. **Scan for candidates** — Call `obsidian_search_notes` with `query: "#knowledge"` to find notes across the vault. Alternatively, use `obsidian_list_notes` for specific folders. Always filter results to skip any paths matching `ignored_folders` (from `obsidian_get_config`). If a note is in `working/*/knowledge/` but not tagged, use `obsidian_read_note` to confirm it contains shareable knowledge.
 
 3. **Semantic clustering** — For each candidate knowledge note path, call `obsidian_rag_query`
    with the note filename (without extension) as query, `limit: 8`.

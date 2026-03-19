@@ -37,7 +37,7 @@ If the user asks for deeper suggestions:
 
 ## Arguments
 
-Optional subfolder: `/link-audit <primary_knowledge_folder>/`
+Optional subfolder: `/link-audit <knowledge_folders[0]>/`
 
 ## Tips
 
