@@ -61190,16 +61190,16 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           VAULT_ID = parsedArgs.vault_id || parsedArgs.id ? String(parsedArgs.vault_id || parsedArgs.id) : null;
         }
         if ("knowledge_folders" in parsedArgs) {
-          KNOWLEDGE_FOLDERS = String(parsedArgs.knowledge_folders).split(",");
+          KNOWLEDGE_FOLDERS = String(parsedArgs.knowledge_folders).split(",").map((s) => s.trim()).filter(Boolean);
         }
         if ("moc_folders" in parsedArgs) {
-          MOC_FOLDERS = String(parsedArgs.moc_folders).split(",");
+          MOC_FOLDERS = String(parsedArgs.moc_folders).split(",").map((s) => s.trim()).filter(Boolean);
         }
         if ("daily_note_folder" in parsedArgs) {
-          DAILY_NOTE_FOLDER = String(parsedArgs.daily_note_folder);
+          DAILY_NOTE_FOLDER = String(parsedArgs.daily_note_folder).trim();
         }
         if ("ignored_folders" in parsedArgs) {
-          IGNORED_FOLDERS = String(parsedArgs.ignored_folders).split(",");
+          IGNORED_FOLDERS = String(parsedArgs.ignored_folders).split(",").map((s) => s.trim()).filter(Boolean);
         }
         VAULT_PATH = vp;
         await indexer.reset();
