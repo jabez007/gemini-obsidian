@@ -6,8 +6,9 @@ This is a powerful [Gemini CLI](https://github.com/google/gemini-cli) extension 
 
 - **🧠 Semantic Search (RAG)**: Ask natural language questions about your notes. The extension indexes your vault using embeddings (via LanceDB) to find relevant context.
 - **🕸️ Graph Traversal**: Navigate your knowledge graph. Find backlinks (`[[linked from]]`) and outgoing links to surf your ideas.
+- **🛠️ Link Repair**: Audit broken wikilinks and make surgical in-note replacements without rewriting whole files.
 - **📝 Smart Journaling**: Fetch today's daily note or append logs to specific headings (e.g., `## Work Log`) with timestamps.
-- **⚡ Management**: Create, move, rename notes, and safely update YAML frontmatter without breaking formatting.
+- **⚡ Management**: Create, move, rename notes, safely update YAML frontmatter in single or batch mode, and edit specific sections.
 - **🔍 Fuzzy Search**: Quickly find files by name or content.
 
 ## Demo
@@ -109,23 +110,35 @@ The following tools are exposed to the Gemini agent:
 ### Graph & Connections
 - `obsidian_get_backlinks`: Find all notes that link TO a specific note.
 - `obsidian_get_links`: Find all notes linked FROM a specific note.
+- `obsidian_get_broken_links`: Find wikilinks that point to missing notes.
 
 ### Management & Journaling
 - `obsidian_create_note`: Create a new markdown note.
 - `obsidian_append_note`: Append text to the end of a note.
 - `obsidian_append_daily_log`: Append text to a specific heading (e.g., "Log") in today's daily note with a timestamp.
 - `obsidian_move_note`: Rename or move a note.
-- `obsidian_update_frontmatter`: Safely update YAML frontmatter keys.
+- `obsidian_update_frontmatter`: Safely update YAML frontmatter keys in single-key or batch mode.
+- `obsidian_replace_section`: Replace the body of a heading without touching the rest of the file.
+- `obsidian_insert_at_heading`: Insert content at the beginning or end of a heading section.
+- `obsidian_replace_in_note`: Replace the first exact text match in a note for surgical inline edits.
 - `obsidian_get_daily_note`: Get or create today's daily note.
+
+## Skills
+
+- `obsidian-companion`: Tool selection and vault workflow guidance.
+- `compound`: Promote repeated project knowledge into durable global notes.
+- `moc-update`: Suggest Maps of Content that should link to a newly created note.
+- `link-audit`: Audit broken links, orphans, and cleanup opportunities.
 
 ## Development
 
 ```bash
 # Build changes
 npm run build
-
-# Watch mode
-npm run watch
+# Type check
+npm run type-check
+# Run tests
+npm test
 ```
 
 ## License

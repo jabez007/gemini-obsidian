@@ -8,10 +8,12 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 
 - **Read Notes:** Access the raw markdown of any note.
 - **Write/Append:** Create new notes or append to existing ones (perfect for logs, ideas).
+- **Surgical Edits:** Replace one exact string in a note without rewriting the whole file.
 - **Daily Notes:** Quickly access or create today's daily journal entry.
 - **Search:** Find notes by keyword or filename.
 - **Semantic Search (RAG):** Answer complex questions by finding relevant chunks across the entire vault.
 - **Indexing:** Build a local vector index of the vault to enable RAG.
+- **Link Audits:** Find broken wikilinks before they rot the graph.
 
 ## Workflow Guidelines
 
@@ -30,10 +32,13 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 
 - **Quick Capture:** If the user says "Log this" or "Remember that...", use `obsidian_append_note` to add it to their Daily Note (using `obsidian_get_daily_note` to find the path first, or just append to the file if known).
 - **New Ideas:** Use `obsidian_create_note` for substantial new topics.
+- **Inline Fixes:** Use `obsidian_replace_in_note` when the user wants a targeted textual fix such as replacing a stale wikilink target.
+- **Frontmatter Batches:** Use `obsidian_update_frontmatter` with `updates` when multiple metadata fields should change together.
 
 ### 4. Context Management
 
 - **Links:** When reading a note, pay attention to `[[Wikilinks]]`. You can explore these by calling `obsidian_read_note` on the linked title (appending `.md` if needed).
+- **Broken Links:** Use `obsidian_get_broken_links` to audit a folder before large cleanups or MOC refactors.
 - **Frontmatter:** Respect YAML frontmatter (tags, aliases) for context.
 
 ## Example Interactions
