@@ -1,12 +1,6 @@
 {
   "name": "gemini-obsidian",
-<<<<<<< HEAD
   "version": "1.7.0",
-||||||| parent of 6f1c05f (chore: version bump to 1.6.0)
-  "version": "1.5.2",
-=======
-  "version": "1.6.0",
->>>>>>> 6f1c05f (chore: version bump to 1.6.0)
   "description": "Obsidian Vault integration with local RAG capabilities",
   "main": "index.js",
   "scripts": {
