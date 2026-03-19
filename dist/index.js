@@ -60791,6 +60791,12 @@ try {
 `);
   process.exit(1);
 }
+function parseCommaSeparatedEnv(envVar, defaultValue) {
+  return envVar ? envVar.split(",").map((s) => s.trim()).filter(Boolean) : defaultValue;
+}
+function parseTrimmedEnv(envVar, defaultValue) {
+  return envVar ? envVar.trim() : defaultValue;
+}
 var DEFAULT_KNOWLEDGE_FOLDERS = ["Engineering"];
 var DEFAULT_MOC_FOLDERS = ["MOCs"];
 var DEFAULT_DAILY_NOTE_FOLDER = "Daily Notes";
@@ -60798,22 +60804,22 @@ var DEFAULT_IGNORED_FOLDERS = ["Daily Notes"];
 var VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || null;
 var WORKSPACE_PATH = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
 var VAULT_ID = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
-var KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_KNOWLEDGE_FOLDERS;
-var MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_MOC_FOLDERS;
-var DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : DEFAULT_DAILY_NOTE_FOLDER;
-var IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : DEFAULT_IGNORED_FOLDERS;
+var KNOWLEDGE_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_KNOWLEDGE_FOLDERS, DEFAULT_KNOWLEDGE_FOLDERS);
+var MOC_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_MOC_FOLDERS, DEFAULT_MOC_FOLDERS);
+var DAILY_NOTE_FOLDER = parseTrimmedEnv(process.env.OBSIDIAN_DAILY_NOTE_FOLDER, DEFAULT_DAILY_NOTE_FOLDER);
+var IGNORED_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_IGNORED_FOLDERS, DEFAULT_IGNORED_FOLDERS);
 var indexer = new VaultIndexer();
 var CONFIG_PATH = path6.join(os2.homedir(), ".gemini-obsidian.config.json");
-async function saveConfig(vaultPath, workspacePath, vaultId, knowledgeFolders, mocFolders, dailyNoteFolder, ignoredFolders) {
+async function saveConfig(options2) {
   try {
     await fs4.writeFile(CONFIG_PATH, JSON.stringify({
-      vault_path: vaultPath,
-      workspace_path: workspacePath || null,
-      vault_id: vaultId || null,
-      knowledge_folders: knowledgeFolders || KNOWLEDGE_FOLDERS,
-      moc_folders: mocFolders || MOC_FOLDERS,
-      daily_note_folder: dailyNoteFolder || DAILY_NOTE_FOLDER,
-      ignored_folders: ignoredFolders || IGNORED_FOLDERS
+      vault_path: options2.vaultPath,
+      workspace_path: options2.workspacePath ?? null,
+      vault_id: options2.vaultId ?? null,
+      knowledge_folders: options2.knowledgeFolders ?? KNOWLEDGE_FOLDERS,
+      moc_folders: options2.mocFolders ?? MOC_FOLDERS,
+      daily_note_folder: options2.dailyNoteFolder ?? DAILY_NOTE_FOLDER,
+      ignored_folders: options2.ignoredFolders ?? IGNORED_FOLDERS
     }), "utf-8");
   } catch (e) {
     console.error("Failed to save config", e);
@@ -60882,10 +60888,10 @@ async function readStdin() {
   VAULT_PATH = VAULT_PATH || config2.vault_path;
   WORKSPACE_PATH = WORKSPACE_PATH || config2.workspace_path;
   VAULT_ID = VAULT_ID || config2.vault_id;
-  KNOWLEDGE_FOLDERS = process.env.OBSIDIAN_KNOWLEDGE_FOLDERS ? process.env.OBSIDIAN_KNOWLEDGE_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : config2.knowledge_folders;
-  MOC_FOLDERS = process.env.OBSIDIAN_MOC_FOLDERS ? process.env.OBSIDIAN_MOC_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : config2.moc_folders;
-  DAILY_NOTE_FOLDER = process.env.OBSIDIAN_DAILY_NOTE_FOLDER ? process.env.OBSIDIAN_DAILY_NOTE_FOLDER.trim() : config2.daily_note_folder;
-  IGNORED_FOLDERS = process.env.OBSIDIAN_IGNORED_FOLDERS ? process.env.OBSIDIAN_IGNORED_FOLDERS.split(",").map((s) => s.trim()).filter(Boolean) : config2.ignored_folders;
+  KNOWLEDGE_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_KNOWLEDGE_FOLDERS, config2.knowledge_folders);
+  MOC_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_MOC_FOLDERS, config2.moc_folders);
+  DAILY_NOTE_FOLDER = parseTrimmedEnv(process.env.OBSIDIAN_DAILY_NOTE_FOLDER, config2.daily_note_folder);
+  IGNORED_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_IGNORED_FOLDERS, config2.ignored_folders);
   const args = process.argv.slice(2);
   const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_get_config", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_append_daily_log", "obsidian_replace_section", "obsidian_insert_at_heading", "obsidian_replace_in_note", "obsidian_get_broken_links", "validate_frontmatter"];
   if (args.length > 0 && knownTools.includes(args[0])) {
@@ -61201,13 +61207,24 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         }
         if ("daily_note_folder" in parsedArgs) {
           DAILY_NOTE_FOLDER = String(parsedArgs.daily_note_folder).trim();
+          if (DAILY_NOTE_FOLDER === "") {
+            console.warn("[Gemini Obsidian] Warning: daily_note_folder is empty; notes will be created in the vault root.");
+          }
         }
         if ("ignored_folders" in parsedArgs) {
           IGNORED_FOLDERS = String(parsedArgs.ignored_folders).split(",").map((s) => s.trim()).filter(Boolean);
         }
         VAULT_PATH = vp;
         await indexer.reset();
-        await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID, KNOWLEDGE_FOLDERS, MOC_FOLDERS, DAILY_NOTE_FOLDER, IGNORED_FOLDERS);
+        await saveConfig({
+          vaultPath: VAULT_PATH,
+          workspacePath: WORKSPACE_PATH,
+          vaultId: VAULT_ID,
+          knowledgeFolders: KNOWLEDGE_FOLDERS,
+          mocFolders: MOC_FOLDERS,
+          dailyNoteFolder: DAILY_NOTE_FOLDER,
+          ignoredFolders: IGNORED_FOLDERS
+        });
         result = `Vault path set to: ${vp}`;
       } else if (toolName === "obsidian_get_config") {
         result = JSON.stringify({
@@ -61506,19 +61523,30 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           VAULT_ID = args2.vault_id ? String(args2.vault_id) : null;
         }
         if (args2 && "knowledge_folders" in args2 && Array.isArray(args2.knowledge_folders)) {
-          KNOWLEDGE_FOLDERS = args2.knowledge_folders;
+          KNOWLEDGE_FOLDERS = args2.knowledge_folders.map((f) => String(f).trim()).filter(Boolean);
         }
         if (args2 && "moc_folders" in args2 && Array.isArray(args2.moc_folders)) {
-          MOC_FOLDERS = args2.moc_folders;
+          MOC_FOLDERS = args2.moc_folders.map((f) => String(f).trim()).filter(Boolean);
         }
         if (args2 && "daily_note_folder" in args2) {
-          DAILY_NOTE_FOLDER = String(args2.daily_note_folder);
+          DAILY_NOTE_FOLDER = String(args2.daily_note_folder).trim();
+          if (DAILY_NOTE_FOLDER === "") {
+            console.warn("[Gemini Obsidian] Warning: daily_note_folder is empty; notes will be created in the vault root.");
+          }
         }
         if (args2 && "ignored_folders" in args2 && Array.isArray(args2.ignored_folders)) {
-          IGNORED_FOLDERS = args2.ignored_folders;
+          IGNORED_FOLDERS = args2.ignored_folders.map((f) => String(f).trim()).filter(Boolean);
         }
         await indexer.reset();
-        await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID, KNOWLEDGE_FOLDERS, MOC_FOLDERS, DAILY_NOTE_FOLDER, IGNORED_FOLDERS);
+        await saveConfig({
+          vaultPath: VAULT_PATH,
+          workspacePath: WORKSPACE_PATH,
+          vaultId: VAULT_ID,
+          knowledgeFolders: KNOWLEDGE_FOLDERS,
+          mocFolders: MOC_FOLDERS,
+          dailyNoteFolder: DAILY_NOTE_FOLDER,
+          ignoredFolders: IGNORED_FOLDERS
+        });
         return { content: [{ type: "text", text: `Vault path set to: ${VAULT_PATH}` }] };
       }
       if (name2 === "obsidian_get_config") {
