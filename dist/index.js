@@ -60410,9 +60410,18 @@ var VaultIndexer = class {
     }
     return normalized;
   }
-  async getPaths(vaultPath, workspacePath) {
+  async getPaths(vaultPath, workspacePath, vaultId) {
     let baseStorePath;
-    const vaultHash = (0, import_md52.default)(path5.resolve(vaultPath));
+    const resolvedVaultPath = path5.resolve(vaultPath);
+    let vaultHash;
+    if (vaultId) {
+      if (!/^[a-zA-Z0-9_\-]+$/.test(vaultId)) {
+        throw new Error(`Invalid vault_id: ${vaultId}. Only alphanumeric characters, underscores, and hyphens are allowed.`);
+      }
+      vaultHash = vaultId;
+    } else {
+      vaultHash = (0, import_md52.default)(resolvedVaultPath);
+    }
     if (workspacePath) {
       baseStorePath = path5.join(workspacePath, ".gemini-obsidian", "vaults", vaultHash);
     } else {
@@ -60423,8 +60432,13 @@ var VaultIndexer = class {
     await fs3.mkdir(baseStorePath, { recursive: true });
     return { dbPath, hashPath };
   }
-  async getDb(vaultPath, workspacePath) {
-    const { dbPath } = await this.getPaths(vaultPath, workspacePath);
+  async writeHashesAtomic(hashPath, hashes) {
+    const tempPath = `${hashPath}.tmp`;
+    await fs3.writeFile(tempPath, JSON.stringify(hashes));
+    await fs3.rename(tempPath, hashPath);
+  }
+  async getDb(vaultPath, workspacePath, vaultId) {
+    const { dbPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
     if (this.db && this.currentDbPath === dbPath) {
       return this.db;
     }
@@ -60432,31 +60446,31 @@ var VaultIndexer = class {
     this.currentDbPath = dbPath;
     return this.db;
   }
-  async getTable(vaultPath, workspacePath) {
-    const db = await this.getDb(vaultPath, workspacePath);
+  async getTable(vaultPath, workspacePath, vaultId) {
+    const db = await this.getDb(vaultPath, workspacePath, vaultId);
     const tableNames = await db.tableNames();
     if (tableNames.includes("notes")) {
       return await db.openTable("notes");
     }
     return null;
   }
-  async indexFile(vaultPath, relativePath, workspacePath) {
+  async indexFile(vaultPath, relativePath, workspacePath, vaultId) {
     const release = await this.acquireLock();
     try {
       const normalizedPath = this.validatePath(relativePath);
-      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
       const embedder = Embedder.getInstance();
       const filePath = getSafeFilePath(vaultPath, relativePath);
       const content = await fs3.readFile(filePath, "utf-8");
       const contentHash = (0, import_md52.default)(content);
-      const { content: body } = (0, import_gray_matter.default)(content);
+      const { content: body } = (0, import_gray_matter2.default)(content);
       const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptionsFromEnv());
       let hashes = {};
       try {
         hashes = JSON.parse(await fs3.readFile(hashPath, "utf-8"));
       } catch {
       }
-      const db = await this.getDb(vaultPath, workspacePath);
+      const db = await this.getDb(vaultPath, workspacePath, vaultId);
       const tableNames = await db.tableNames();
       if (textsToEmbed.length > 0) {
         const chunks = await this.embedWithFallback(embedder, textsToEmbed, chunkMetadata);
@@ -60472,7 +60486,7 @@ var VaultIndexer = class {
           await table.add(chunkRows);
         }
         hashes[normalizedPath] = contentHash;
-        await fs3.writeFile(hashPath, JSON.stringify(hashes));
+        await this.writeHashesAtomic(hashPath, hashes);
         console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
         return { success: true, chunks: chunks.length };
       } else {
@@ -60481,7 +60495,7 @@ var VaultIndexer = class {
           await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
         }
         delete hashes[normalizedPath];
-        await fs3.writeFile(hashPath, JSON.stringify(hashes));
+        await this.writeHashesAtomic(hashPath, hashes);
         return { success: true, chunks: 0, message: "File removed from index (no embeddable content)." };
       }
     } catch (err) {
@@ -60491,18 +60505,21 @@ var VaultIndexer = class {
       release();
     }
   }
-  async indexVault(vaultPath, force = false, workspacePath) {
+  async indexVault(vaultPath, force = false, workspacePath, vaultId) {
     const release = await this.acquireLock();
     try {
-      const { hashPath } = await this.getPaths(vaultPath, workspacePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
       const embedder = Embedder.getInstance();
-      const db = await this.getDb(vaultPath, workspacePath);
+      const db = await this.getDb(vaultPath, workspacePath, vaultId);
       const files = await glob("**/*.md", { cwd: vaultPath, absolute: true, follow: true });
       console.error(`Found ${files.length} notes in ${vaultPath}`);
       let previousHashes = {};
       if (!force) {
         try {
-          previousHashes = JSON.parse(await fs3.readFile(hashPath, "utf-8"));
+          const rawHashes = JSON.parse(await fs3.readFile(hashPath, "utf-8"));
+          for (const key of Object.keys(rawHashes)) {
+            previousHashes[key.replace(/\\/g, "/")] = rawHashes[key];
+          }
         } catch {
         }
       }
@@ -60546,7 +60563,8 @@ var VaultIndexer = class {
           batch.map(async (filePath) => {
             try {
               const content = await fs3.readFile(filePath, "utf-8");
-              const relativePath = path5.relative(vaultPath, filePath);
+              const relativePathRaw = path5.relative(vaultPath, filePath);
+              const relativePath = relativePathRaw.replace(/\\/g, "/");
               const contentHash = (0, import_md52.default)(content);
               if (canIncremental && previousHashes[relativePath] === contentHash) {
                 return null;
@@ -60554,7 +60572,7 @@ var VaultIndexer = class {
               this.validatePath(relativePath);
               changedHashes[relativePath] = contentHash;
               changedPaths.push(relativePath);
-              const { content: body } = (0, import_gray_matter.default)(content);
+              const { content: body } = (0, import_gray_matter2.default)(content);
               const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
               if (inputs.textsToEmbed.length > 0) {
                 expectedChunkCounts[relativePath] = inputs.textsToEmbed.length;
@@ -60583,7 +60601,10 @@ var VaultIndexer = class {
         renderReadProgress();
       }
       const existingRelativePaths = /* @__PURE__ */ new Set();
-      for (const f of files) existingRelativePaths.add(path5.relative(vaultPath, f));
+      for (const f of files) {
+        const p = path5.relative(vaultPath, f).replace(/\\/g, "/");
+        existingRelativePaths.add(p);
+      }
       const deletedPaths = Object.keys(previousHashes).filter((p) => !existingRelativePaths.has(p));
       if (canIncremental) {
         console.error(`Incremental: ${changedPaths.length} changed, ${deletedPaths.length} deleted, ${skippedFiles} unchanged`);
@@ -60592,7 +60613,7 @@ var VaultIndexer = class {
       }
       if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
         console.error("Index is up to date, no changes detected.");
-        await fs3.writeFile(hashPath, JSON.stringify(currentHashes));
+        await this.writeHashesAtomic(hashPath, currentHashes);
         return { success: true, chunks: 0, message: "Index up to date, no changes detected." };
       }
       if (!canIncremental && allTexts.length === 0) {
@@ -60694,7 +60715,7 @@ var VaultIndexer = class {
           await persistChunks(pendingChunks);
         }
       }
-      await fs3.writeFile(hashPath, JSON.stringify(currentHashes));
+      await this.writeHashesAtomic(hashPath, currentHashes);
       if (canIncremental) {
         console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
       } else {
@@ -60705,10 +60726,10 @@ var VaultIndexer = class {
       release();
     }
   }
-  async search(query, vaultPath, limit = 5, workspacePath) {
+  async search(query, vaultPath, limit = 5, workspacePath, vaultId) {
     const release = await this.acquireLock();
     try {
-      const table = await this.getTable(vaultPath, workspacePath);
+      const table = await this.getTable(vaultPath, workspacePath, vaultId);
       if (!table) {
         return [];
       }
@@ -60745,456 +60766,6 @@ var VaultIndexer = class {
     }
     return recovered;
   }
-<<<<<<< HEAD
-  async indexFile(vaultPath, relativePath) {
-    const embedder = Embedder.getInstance();
-    const filePath = getSafeFilePath(vaultPath, relativePath);
-    try {
-      const content = await fs3.readFile(filePath, "utf-8");
-      const { data, content: body } = (0, import_gray_matter2.default)(content);
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
-      if (textsToEmbed.length > 0) {
-        const chunks = await this.embedWithFallback(embedder, textsToEmbed, chunkMetadata);
-        if (chunks.length === 0) {
-          return { success: false, message: `Failed to embed content for ${relativePath}.` };
-        }
-        const chunkRows = chunks;
-        const db = await this.getDb();
-        const tableNames = await db.tableNames();
-        if (!tableNames.includes("notes")) {
-          this.table = await db.createTable("notes", chunkRows);
-        } else {
-          this.table = await db.openTable("notes");
-          await this.table.delete(`path = '${relativePath.replace(/'/g, "''")}'`);
-          await this.table.add(chunkRows);
-        }
-        console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
-        return { success: true, chunks: chunks.length };
-      }
-      return { success: false, message: "No content to index or table not available." };
-    } catch (err) {
-      console.error(`Failed to index file ${filePath}:`, err);
-      return { success: false, message: String(err) };
-    }
-  }
-  async indexVault(vaultPath, force = false) {
-    const embedder = Embedder.getInstance();
-    const db = await this.getDb();
-    const files = await glob("**/*.md", { cwd: vaultPath, absolute: true, follow: true });
-    console.error(`Found ${files.length} notes in ${vaultPath}`);
-    let previousHashes = {};
-    if (!force) {
-      try {
-        previousHashes = JSON.parse(await fs3.readFile(HASH_PATH, "utf-8"));
-      } catch {
-      }
-    }
-    const tableNames = await db.tableNames();
-    const tableExists = tableNames.includes("notes");
-    const hasPreviousHashes = Object.keys(previousHashes).length > 0;
-    const canIncremental = tableExists && hasPreviousHashes && !force;
-    const batchSizeRaw = Number(process.env.GEMINI_OBSIDIAN_EMBED_BATCH_SIZE ?? "48");
-    const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.min(Math.floor(batchSizeRaw), 256) : 48;
-    const useProgressBar = process.stderr.isTTY === true;
-    const progressInterval = 100;
-    const allTexts = [];
-    const allMeta = [];
-    const currentHashes = {};
-    const changedPaths = [];
-    let filesRead = 0;
-    let skippedFiles = 0;
-    const renderReadProgress = () => {
-      if (files.length === 0) return;
-      if (useProgressBar) {
-        const percent = Math.min(100, Math.floor(filesRead / files.length * 100));
-        const width = 30;
-        const filled = Math.round(percent / 100 * width);
-        const bar = `${"=".repeat(filled)}${"-".repeat(width - filled)}`;
-        process.stderr.write(
-          `\rReading [${bar}] ${percent}% ${filesRead}/${files.length} files`
-        );
-        if (filesRead === files.length) process.stderr.write("\n");
-        return;
-      }
-      if (filesRead % progressInterval === 0 || filesRead === files.length) {
-        console.error(`Reading progress: ${filesRead}/${files.length} files`);
-      }
-    };
-    const FILE_READ_CONCURRENCY = 50;
-    for (let i2 = 0; i2 < files.length; i2 += FILE_READ_CONCURRENCY) {
-      const batch = files.slice(i2, i2 + FILE_READ_CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async (filePath) => {
-          try {
-            const content = await fs3.readFile(filePath, "utf-8");
-            const relativePath = path5.relative(vaultPath, filePath);
-            const contentHash = (0, import_md52.default)(content);
-            currentHashes[relativePath] = contentHash;
-            if (canIncremental && previousHashes[relativePath] === contentHash) {
-              return null;
-            }
-            changedPaths.push(relativePath);
-            const { content: body } = (0, import_gray_matter2.default)(content);
-            return buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
-          } catch (err) {
-            console.error(`Failed to process file ${filePath}:`, err);
-            return null;
-          }
-        })
-      );
-      for (const result of results) {
-        if (result) {
-          for (let j = 0; j < result.textsToEmbed.length; j++) {
-            allTexts.push(result.textsToEmbed[j]);
-            allMeta.push(result.chunkMetadata[j]);
-          }
-        } else {
-          skippedFiles++;
-        }
-      }
-      filesRead += batch.length;
-      renderReadProgress();
-    }
-    const deletedPaths = Object.keys(previousHashes).filter((p) => !(p in currentHashes));
-    if (canIncremental) {
-      console.error(`Incremental: ${changedPaths.length} changed, ${deletedPaths.length} deleted, ${skippedFiles} unchanged`);
-    } else {
-      console.error(`Full index: ${allTexts.length} chunks from ${files.length} files`);
-    }
-    if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
-      console.error("Index is up to date, no changes detected.");
-      await fs3.writeFile(HASH_PATH, JSON.stringify(currentHashes));
-      return { success: true, chunks: 0, message: "Index up to date, no changes detected." };
-    }
-    if (!canIncremental && allTexts.length === 0) {
-      return { success: false, message: "No content found to index." };
-    }
-    let indexedChunks = 0;
-    let tableInitialized = false;
-    if (canIncremental) {
-      this.table = await db.openTable("notes");
-      const pathsToDelete = [...changedPaths, ...deletedPaths];
-      if (pathsToDelete.length > 0) {
-        const DELETE_BATCH = 100;
-        for (let i2 = 0; i2 < pathsToDelete.length; i2 += DELETE_BATCH) {
-          const batch = pathsToDelete.slice(i2, i2 + DELETE_BATCH);
-          const escaped = batch.map((p) => `'${p.replace(/'/g, "''")}'`);
-          await this.table.delete(`path IN (${escaped.join(", ")})`);
-        }
-      }
-      tableInitialized = true;
-    }
-    if (allTexts.length > 0) {
-      const sortedIndices = allTexts.map((_, i2) => i2);
-      sortedIndices.sort((a, b) => allTexts[a].length - allTexts[b].length);
-      const sortedTexts = sortedIndices.map((i2) => allTexts[i2]);
-      const sortedMeta = sortedIndices.map((i2) => allMeta[i2]);
-      let chunksEmbedded = 0;
-      const renderEmbedProgress = () => {
-        const total = sortedTexts.length;
-        if (total === 0) return;
-        if (useProgressBar) {
-          const percent = Math.min(100, Math.floor(chunksEmbedded / total * 100));
-          const width = 30;
-          const filled = Math.round(percent / 100 * width);
-          const bar = `${"=".repeat(filled)}${"-".repeat(width - filled)}`;
-          process.stderr.write(
-            `\rEmbedding [${bar}] ${percent}% ${chunksEmbedded}/${total} chunks`
-          );
-          if (chunksEmbedded === total) process.stderr.write("\n");
-          return;
-        }
-        if (chunksEmbedded % (batchSize * 5) === 0 || chunksEmbedded === total) {
-          console.error(`Embedding progress: ${chunksEmbedded}/${total} chunks`);
-        }
-      };
-      const persistChunks = async (chunks) => {
-        if (chunks.length === 0) return;
-        const chunkRows = chunks;
-        if (!tableInitialized) {
-          try {
-            await db.dropTable("notes");
-          } catch (e) {
-          }
-          this.table = await db.createTable("notes", chunkRows);
-          tableInitialized = true;
-        } else {
-          if (!this.table) {
-            this.table = await db.openTable("notes");
-          }
-          await this.table.add(chunkRows);
-        }
-        indexedChunks += chunks.length;
-      };
-      const WRITE_ACCUMULATE = 5;
-      let pendingChunks = [];
-      let batchesSinceWrite = 0;
-      let pendingWrite = null;
-      for (let i2 = 0; i2 < sortedTexts.length; i2 += batchSize) {
-        const batchTexts = sortedTexts.slice(i2, i2 + batchSize);
-        const batchMeta = sortedMeta.slice(i2, i2 + batchSize);
-        const embeddedChunks = await this.embedWithFallback(embedder, batchTexts, batchMeta);
-        pendingChunks.push(...embeddedChunks);
-        batchesSinceWrite++;
-        chunksEmbedded += batchTexts.length;
-        renderEmbedProgress();
-        if (batchesSinceWrite >= WRITE_ACCUMULATE) {
-          if (pendingWrite) await pendingWrite;
-          const chunksToWrite = pendingChunks;
-          pendingChunks = [];
-          batchesSinceWrite = 0;
-          pendingWrite = persistChunks(chunksToWrite);
-        }
-      }
-      if (pendingWrite) await pendingWrite;
-      if (pendingChunks.length > 0) {
-        await persistChunks(pendingChunks);
-      }
-    }
-    await fs3.writeFile(HASH_PATH, JSON.stringify(currentHashes));
-    if (canIncremental) {
-      console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
-    } else {
-      console.error(`Indexed ${indexedChunks} chunks.`);
-    }
-    return { success: true, chunks: indexedChunks };
-  }
-  async search(query, limit = 5) {
-    const table = await this.getTable();
-    if (!table) {
-      return [];
-    }
-    const embedder = Embedder.getInstance();
-    const vector = await embedder.embed(query);
-    const results = await table.vectorSearch(vector).limit(limit).toArray();
-    return results;
-  }
-||||||| parent of 792bfff (Workspace Isolated Storage (#2))
-  async indexFile(vaultPath, relativePath) {
-    const embedder = Embedder.getInstance();
-    const filePath = getSafeFilePath(vaultPath, relativePath);
-    try {
-      const content = await fs3.readFile(filePath, "utf-8");
-      const { data, content: body } = (0, import_gray_matter.default)(content);
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
-      if (textsToEmbed.length > 0) {
-        const chunks = await this.embedWithFallback(embedder, textsToEmbed, chunkMetadata);
-        if (chunks.length === 0) {
-          return { success: false, message: `Failed to embed content for ${relativePath}.` };
-        }
-        const chunkRows = chunks;
-        const db = await this.getDb();
-        const tableNames = await db.tableNames();
-        if (!tableNames.includes("notes")) {
-          this.table = await db.createTable("notes", chunkRows);
-        } else {
-          this.table = await db.openTable("notes");
-          await this.table.delete(`path = '${relativePath.replace(/'/g, "''")}'`);
-          await this.table.add(chunkRows);
-        }
-        console.error(`Indexed ${chunks.length} chunks for ${relativePath}.`);
-        return { success: true, chunks: chunks.length };
-      }
-      return { success: false, message: "No content to index or table not available." };
-    } catch (err) {
-      console.error(`Failed to index file ${filePath}:`, err);
-      return { success: false, message: String(err) };
-    }
-  }
-  async indexVault(vaultPath, force = false) {
-    const embedder = Embedder.getInstance();
-    const db = await this.getDb();
-    const files = await glob("**/*.md", { cwd: vaultPath, absolute: true, follow: true });
-    console.error(`Found ${files.length} notes in ${vaultPath}`);
-    let previousHashes = {};
-    if (!force) {
-      try {
-        previousHashes = JSON.parse(await fs3.readFile(HASH_PATH, "utf-8"));
-      } catch {
-      }
-    }
-    const tableNames = await db.tableNames();
-    const tableExists = tableNames.includes("notes");
-    const hasPreviousHashes = Object.keys(previousHashes).length > 0;
-    const canIncremental = tableExists && hasPreviousHashes && !force;
-    const batchSizeRaw = Number(process.env.GEMINI_OBSIDIAN_EMBED_BATCH_SIZE ?? "48");
-    const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.min(Math.floor(batchSizeRaw), 256) : 48;
-    const useProgressBar = process.stderr.isTTY === true;
-    const progressInterval = 100;
-    const allTexts = [];
-    const allMeta = [];
-    const currentHashes = {};
-    const changedPaths = [];
-    let filesRead = 0;
-    let skippedFiles = 0;
-    const renderReadProgress = () => {
-      if (files.length === 0) return;
-      if (useProgressBar) {
-        const percent = Math.min(100, Math.floor(filesRead / files.length * 100));
-        const width = 30;
-        const filled = Math.round(percent / 100 * width);
-        const bar = `${"=".repeat(filled)}${"-".repeat(width - filled)}`;
-        process.stderr.write(
-          `\rReading [${bar}] ${percent}% ${filesRead}/${files.length} files`
-        );
-        if (filesRead === files.length) process.stderr.write("\n");
-        return;
-      }
-      if (filesRead % progressInterval === 0 || filesRead === files.length) {
-        console.error(`Reading progress: ${filesRead}/${files.length} files`);
-      }
-    };
-    const FILE_READ_CONCURRENCY = 50;
-    for (let i2 = 0; i2 < files.length; i2 += FILE_READ_CONCURRENCY) {
-      const batch = files.slice(i2, i2 + FILE_READ_CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async (filePath) => {
-          try {
-            const content = await fs3.readFile(filePath, "utf-8");
-            const relativePath = path5.relative(vaultPath, filePath);
-            const contentHash = (0, import_md52.default)(content);
-            currentHashes[relativePath] = contentHash;
-            if (canIncremental && previousHashes[relativePath] === contentHash) {
-              return null;
-            }
-            changedPaths.push(relativePath);
-            const { content: body } = (0, import_gray_matter.default)(content);
-            return buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
-          } catch (err) {
-            console.error(`Failed to process file ${filePath}:`, err);
-            return null;
-          }
-        })
-      );
-      for (const result of results) {
-        if (result) {
-          for (let j = 0; j < result.textsToEmbed.length; j++) {
-            allTexts.push(result.textsToEmbed[j]);
-            allMeta.push(result.chunkMetadata[j]);
-          }
-        } else {
-          skippedFiles++;
-        }
-      }
-      filesRead += batch.length;
-      renderReadProgress();
-    }
-    const deletedPaths = Object.keys(previousHashes).filter((p) => !(p in currentHashes));
-    if (canIncremental) {
-      console.error(`Incremental: ${changedPaths.length} changed, ${deletedPaths.length} deleted, ${skippedFiles} unchanged`);
-    } else {
-      console.error(`Full index: ${allTexts.length} chunks from ${files.length} files`);
-    }
-    if (canIncremental && allTexts.length === 0 && deletedPaths.length === 0) {
-      console.error("Index is up to date, no changes detected.");
-      await fs3.writeFile(HASH_PATH, JSON.stringify(currentHashes));
-      return { success: true, chunks: 0, message: "Index up to date, no changes detected." };
-    }
-    if (!canIncremental && allTexts.length === 0) {
-      return { success: false, message: "No content found to index." };
-    }
-    let indexedChunks = 0;
-    let tableInitialized = false;
-    if (canIncremental) {
-      this.table = await db.openTable("notes");
-      const pathsToDelete = [...changedPaths, ...deletedPaths];
-      if (pathsToDelete.length > 0) {
-        const DELETE_BATCH = 100;
-        for (let i2 = 0; i2 < pathsToDelete.length; i2 += DELETE_BATCH) {
-          const batch = pathsToDelete.slice(i2, i2 + DELETE_BATCH);
-          const escaped = batch.map((p) => `'${p.replace(/'/g, "''")}'`);
-          await this.table.delete(`path IN (${escaped.join(", ")})`);
-        }
-      }
-      tableInitialized = true;
-    }
-    if (allTexts.length > 0) {
-      const sortedIndices = allTexts.map((_, i2) => i2);
-      sortedIndices.sort((a, b) => allTexts[a].length - allTexts[b].length);
-      const sortedTexts = sortedIndices.map((i2) => allTexts[i2]);
-      const sortedMeta = sortedIndices.map((i2) => allMeta[i2]);
-      let chunksEmbedded = 0;
-      const renderEmbedProgress = () => {
-        const total = sortedTexts.length;
-        if (total === 0) return;
-        if (useProgressBar) {
-          const percent = Math.min(100, Math.floor(chunksEmbedded / total * 100));
-          const width = 30;
-          const filled = Math.round(percent / 100 * width);
-          const bar = `${"=".repeat(filled)}${"-".repeat(width - filled)}`;
-          process.stderr.write(
-            `\rEmbedding [${bar}] ${percent}% ${chunksEmbedded}/${total} chunks`
-          );
-          if (chunksEmbedded === total) process.stderr.write("\n");
-          return;
-        }
-        if (chunksEmbedded % (batchSize * 5) === 0 || chunksEmbedded === total) {
-          console.error(`Embedding progress: ${chunksEmbedded}/${total} chunks`);
-        }
-      };
-      const persistChunks = async (chunks) => {
-        if (chunks.length === 0) return;
-        const chunkRows = chunks;
-        if (!tableInitialized) {
-          try {
-            await db.dropTable("notes");
-          } catch (e) {
-          }
-          this.table = await db.createTable("notes", chunkRows);
-          tableInitialized = true;
-        } else {
-          if (!this.table) {
-            this.table = await db.openTable("notes");
-          }
-          await this.table.add(chunkRows);
-        }
-        indexedChunks += chunks.length;
-      };
-      const WRITE_ACCUMULATE = 5;
-      let pendingChunks = [];
-      let batchesSinceWrite = 0;
-      let pendingWrite = null;
-      for (let i2 = 0; i2 < sortedTexts.length; i2 += batchSize) {
-        const batchTexts = sortedTexts.slice(i2, i2 + batchSize);
-        const batchMeta = sortedMeta.slice(i2, i2 + batchSize);
-        const embeddedChunks = await this.embedWithFallback(embedder, batchTexts, batchMeta);
-        pendingChunks.push(...embeddedChunks);
-        batchesSinceWrite++;
-        chunksEmbedded += batchTexts.length;
-        renderEmbedProgress();
-        if (batchesSinceWrite >= WRITE_ACCUMULATE) {
-          if (pendingWrite) await pendingWrite;
-          const chunksToWrite = pendingChunks;
-          pendingChunks = [];
-          batchesSinceWrite = 0;
-          pendingWrite = persistChunks(chunksToWrite);
-        }
-      }
-      if (pendingWrite) await pendingWrite;
-      if (pendingChunks.length > 0) {
-        await persistChunks(pendingChunks);
-      }
-    }
-    await fs3.writeFile(HASH_PATH, JSON.stringify(currentHashes));
-    if (canIncremental) {
-      console.error(`Incremental update: ${indexedChunks} chunks embedded, ${deletedPaths.length} files removed.`);
-    } else {
-      console.error(`Indexed ${indexedChunks} chunks.`);
-    }
-    return { success: true, chunks: indexedChunks };
-  }
-  async search(query, limit = 5) {
-    const table = await this.getTable();
-    if (!table) {
-      return [];
-    }
-    const embedder = Embedder.getInstance();
-    const vector = await embedder.embed(query);
-    const results = await table.vectorSearch(vector).limit(limit).toArray();
-    return results;
-  }
-=======
->>>>>>> 792bfff (Workspace Isolated Storage (#2))
 };
 
 // src/index.ts
@@ -61220,15 +60791,35 @@ try {
 `);
   process.exit(1);
 }
+function parseCommaSeparatedEnv(envVar, defaultValue) {
+  return envVar ? envVar.split(",").map((s) => s.trim()).filter(Boolean) : defaultValue;
+}
+function parseTrimmedEnv(envVar, defaultValue) {
+  return envVar ? envVar.trim() : defaultValue;
+}
+var DEFAULT_KNOWLEDGE_FOLDERS = ["Engineering"];
+var DEFAULT_MOC_FOLDERS = ["MOCs"];
+var DEFAULT_DAILY_NOTE_FOLDER = "Daily Notes";
+var DEFAULT_IGNORED_FOLDERS = ["Daily Notes"];
 var VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || null;
 var WORKSPACE_PATH = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
+var VAULT_ID = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
+var KNOWLEDGE_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_KNOWLEDGE_FOLDERS, DEFAULT_KNOWLEDGE_FOLDERS);
+var MOC_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_MOC_FOLDERS, DEFAULT_MOC_FOLDERS);
+var DAILY_NOTE_FOLDER = parseTrimmedEnv(process.env.OBSIDIAN_DAILY_NOTE_FOLDER, DEFAULT_DAILY_NOTE_FOLDER);
+var IGNORED_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_IGNORED_FOLDERS, DEFAULT_IGNORED_FOLDERS);
 var indexer = new VaultIndexer();
 var CONFIG_PATH = path6.join(os2.homedir(), ".gemini-obsidian.config.json");
-async function saveConfig(vaultPath, workspacePath) {
+async function saveConfig(options2) {
   try {
     await fs4.writeFile(CONFIG_PATH, JSON.stringify({
-      vault_path: vaultPath,
-      workspace_path: workspacePath || null
+      vault_path: options2.vaultPath,
+      workspace_path: options2.workspacePath ?? null,
+      vault_id: options2.vaultId ?? null,
+      knowledge_folders: options2.knowledgeFolders ?? KNOWLEDGE_FOLDERS,
+      moc_folders: options2.mocFolders ?? MOC_FOLDERS,
+      daily_note_folder: options2.dailyNoteFolder ?? DAILY_NOTE_FOLDER,
+      ignored_folders: options2.ignoredFolders ?? IGNORED_FOLDERS
     }), "utf-8");
   } catch (e) {
     console.error("Failed to save config", e);
@@ -61240,10 +60831,23 @@ async function loadConfig2() {
     const config2 = JSON.parse(data);
     return {
       vault_path: config2.vault_path || null,
-      workspace_path: config2.workspace_path || null
+      workspace_path: config2.workspace_path || null,
+      vault_id: config2.vault_id || null,
+      knowledge_folders: config2.knowledge_folders || DEFAULT_KNOWLEDGE_FOLDERS,
+      moc_folders: config2.moc_folders || DEFAULT_MOC_FOLDERS,
+      daily_note_folder: config2.daily_note_folder || DEFAULT_DAILY_NOTE_FOLDER,
+      ignored_folders: config2.ignored_folders || DEFAULT_IGNORED_FOLDERS
     };
   } catch {
-    return { vault_path: null, workspace_path: null };
+    return {
+      vault_path: null,
+      workspace_path: null,
+      vault_id: null,
+      knowledge_folders: DEFAULT_KNOWLEDGE_FOLDERS,
+      moc_folders: DEFAULT_MOC_FOLDERS,
+      daily_note_folder: DEFAULT_DAILY_NOTE_FOLDER,
+      ignored_folders: DEFAULT_IGNORED_FOLDERS
+    };
   }
 }
 function getVaultPath(providedPath) {
@@ -61255,6 +60859,9 @@ function getVaultPath(providedPath) {
 }
 function getWorkspacePath(providedPath) {
   return providedPath || WORKSPACE_PATH || null;
+}
+function getVaultId(providedId) {
+  return providedId || VAULT_ID || null;
 }
 async function readStdin() {
   return new Promise((resolve3, reject) => {
@@ -61280,8 +60887,13 @@ async function readStdin() {
   const config2 = await loadConfig2();
   VAULT_PATH = VAULT_PATH || config2.vault_path;
   WORKSPACE_PATH = WORKSPACE_PATH || config2.workspace_path;
+  VAULT_ID = VAULT_ID || config2.vault_id;
+  KNOWLEDGE_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_KNOWLEDGE_FOLDERS, config2.knowledge_folders);
+  MOC_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_MOC_FOLDERS, config2.moc_folders);
+  DAILY_NOTE_FOLDER = parseTrimmedEnv(process.env.OBSIDIAN_DAILY_NOTE_FOLDER, config2.daily_note_folder);
+  IGNORED_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_IGNORED_FOLDERS, config2.ignored_folders);
   const args = process.argv.slice(2);
-  const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_append_daily_log", "obsidian_replace_section", "obsidian_insert_at_heading", "obsidian_replace_in_note", "obsidian_get_broken_links", "validate_frontmatter"];
+  const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_get_config", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_append_daily_log", "obsidian_replace_section", "obsidian_insert_at_heading", "obsidian_replace_in_note", "obsidian_get_broken_links", "validate_frontmatter"];
   if (args.length > 0 && knownTools.includes(args[0])) {
     const toolName = args[0];
     const toolArgs = args.slice(1);
@@ -61325,9 +60937,8 @@ async function readStdin() {
       } else if (toolName === "obsidian_get_daily_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, "Daily Notes")).catch(() => null) ? "Daily Notes" : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         try {
           result = await fs4.readFile(filePath, "utf-8");
         } catch (e) {
@@ -61357,7 +60968,7 @@ async function readStdin() {
         }
         result = matches.join("\n");
       } else if (toolName === "obsidian_rag_index") {
-        let vp, fp, wp, hpForce;
+        let vp, fp, wp, hpForce, vid;
         if (parsedArgs.hook) {
           const inputStr = await readStdin();
           if (!inputStr) {
@@ -61366,27 +60977,25 @@ async function readStdin() {
           const input = JSON.parse(inputStr);
           vp = getVaultPath(input.tool_input?.vault_path || VAULT_PATH);
           fp = input.tool_input?.file_path;
-<<<<<<< HEAD
+          wp = getWorkspacePath(input.tool_input?.workspace_path || WORKSPACE_PATH);
+          vid = getVaultId(input.tool_input?.vault_id || VAULT_ID);
+          hpForce = input.tool_input?.force_reindex === true;
           if (!fp) {
             process.exit(0);
           }
-||||||| parent of 792bfff (Workspace Isolated Storage (#2))
-=======
-          wp = getWorkspacePath(input.tool_input?.workspace_path || WORKSPACE_PATH);
-          hpForce = input.tool_input?.force_reindex === true;
->>>>>>> 792bfff (Workspace Isolated Storage (#2))
         } else {
           vp = getVaultPath(parsedArgs.vault_path);
           fp = parsedArgs.file_path ? String(parsedArgs.file_path) : null;
           wp = getWorkspacePath(parsedArgs.workspace_path);
+          vid = getVaultId(parsedArgs.vault_id);
           hpForce = false;
         }
         const force = parsedArgs.force_reindex === true || parsedArgs.force === true || hpForce;
         let res;
         if (fp) {
-          res = await indexer.indexFile(vp, String(fp), wp);
+          res = await indexer.indexFile(vp, String(fp), wp, vid);
         } else {
-          res = await indexer.indexVault(vp, force, wp);
+          res = await indexer.indexVault(vp, force, wp, vid);
         }
         result = JSON.stringify(res);
       } else if (toolName === "obsidian_rag_query") {
@@ -61394,7 +61003,8 @@ async function readStdin() {
         const limit = Number(parsedArgs.limit) || 5;
         const vp = getVaultPath(parsedArgs.vault_path);
         const wp = getWorkspacePath(parsedArgs.workspace_path);
-        const res = await indexer.search(query, vp, limit, wp);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const res = await indexer.search(query, vp, limit, wp, vid);
         result = res.map((r) => `File: ${r.path}
 Content: ${r.text}`).join("\n---\n");
       } else if (toolName === "obsidian_get_backlinks") {
@@ -61472,9 +61082,8 @@ Content: ${r.text}`).join("\n---\n");
         const heading = String(parsedArgs.heading);
         const content = String(parsedArgs.content);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, "Daily Notes")).catch(() => null) ? "Daily Notes" : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         let fileContent = "";
         try {
           fileContent = await fs4.readFile(filePath, "utf-8");
@@ -61497,7 +61106,6 @@ Content: ${r.text}`).join("\n---\n");
         }
         await fs4.writeFile(filePath, fileContent, "utf-8");
         result = `Appended to daily note under "${heading}"`;
-<<<<<<< HEAD
       } else if (toolName === "obsidian_replace_in_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
         const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
@@ -61583,24 +61191,60 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           process.exit(2);
         }
         process.exit(0);
-||||||| parent of 792bfff (Workspace Isolated Storage (#2))
-=======
       } else if (toolName === "obsidian_set_vault") {
-        const vp = String(parsedArgs.path);
+        const vp = String(parsedArgs.path || parsedArgs.vault_path || "");
         if ("workspace_path" in parsedArgs) {
           WORKSPACE_PATH = parsedArgs.workspace_path ? String(parsedArgs.workspace_path) : null;
         }
+        if ("vault_id" in parsedArgs || "id" in parsedArgs) {
+          VAULT_ID = parsedArgs.vault_id || parsedArgs.id ? String(parsedArgs.vault_id || parsedArgs.id) : null;
+        }
+        if ("knowledge_folders" in parsedArgs) {
+          KNOWLEDGE_FOLDERS = String(parsedArgs.knowledge_folders).split(",").map((s) => s.trim()).filter(Boolean);
+        }
+        if ("moc_folders" in parsedArgs) {
+          MOC_FOLDERS = String(parsedArgs.moc_folders).split(",").map((s) => s.trim()).filter(Boolean);
+        }
+        if ("daily_note_folder" in parsedArgs) {
+          DAILY_NOTE_FOLDER = String(parsedArgs.daily_note_folder).trim();
+          if (DAILY_NOTE_FOLDER === "") {
+            console.warn("[Gemini Obsidian] Warning: daily_note_folder is empty; notes will be created in the vault root.");
+          }
+        }
+        if ("ignored_folders" in parsedArgs) {
+          IGNORED_FOLDERS = String(parsedArgs.ignored_folders).split(",").map((s) => s.trim()).filter(Boolean);
+        }
         VAULT_PATH = vp;
         await indexer.reset();
-        await saveConfig(VAULT_PATH, WORKSPACE_PATH);
-        result = `Vault path set to: ${vp}` + (WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : "");
->>>>>>> 792bfff (Workspace Isolated Storage (#2))
+        await saveConfig({
+          vaultPath: VAULT_PATH,
+          workspacePath: WORKSPACE_PATH,
+          vaultId: VAULT_ID,
+          knowledgeFolders: KNOWLEDGE_FOLDERS,
+          mocFolders: MOC_FOLDERS,
+          dailyNoteFolder: DAILY_NOTE_FOLDER,
+          ignoredFolders: IGNORED_FOLDERS
+        });
+        result = `Vault path set to: ${vp}`;
+      } else if (toolName === "obsidian_get_config") {
+        result = JSON.stringify({
+          vault_path: VAULT_PATH,
+          workspace_path: WORKSPACE_PATH,
+          vault_id: VAULT_ID,
+          knowledge_folders: KNOWLEDGE_FOLDERS,
+          moc_folders: MOC_FOLDERS,
+          daily_note_folder: DAILY_NOTE_FOLDER,
+          ignored_folders: IGNORED_FOLDERS
+        }, null, 2);
       } else {
         console.error(`Unknown tool: ${toolName}`);
         process.exit(1);
       }
-      console.log(result);
-      process.exit(0);
+      if (result !== void 0) {
+        console.log(result);
+        process.exit(0);
+      }
+      process.exit(1);
     } catch (error2) {
       console.error(error2.message);
       process.exit(1);
@@ -61622,14 +61266,27 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
       tools: [
         {
           name: "obsidian_set_vault",
-          description: "Set the default Obsidian vault path and optional workspace path for this session.",
+          description: "Set the default Obsidian vault path and optional structure/ID for this session.",
           inputSchema: {
             type: "object",
             properties: {
               path: { type: "string", description: "Absolute path to the Obsidian vault" },
-              workspace_path: { type: "string", description: "Optional absolute path to the workspace root where .gemini-obsidian should be created." }
+              workspace_path: { type: "string", description: "Optional absolute path to the workspace root where .gemini-obsidian should be created." },
+              vault_id: { type: "string", description: "Optional unique identifier for this vault to share metadata across machines." },
+              knowledge_folders: { type: "array", items: { type: "string" }, description: 'Folders for global knowledge notes (e.g., ["WORK", "LIFE"])' },
+              moc_folders: { type: "array", items: { type: "string" }, description: 'Folders where Maps of Content (MOCs) or Bases are stored (e.g., ["_SYS"])' },
+              daily_note_folder: { type: "string", description: 'Folder where daily notes are stored (e.g., "JRNL")' },
+              ignored_folders: { type: "array", items: { type: "string" }, description: 'List of folders to ignore during audits/scans (e.g., ["JRNL", "Archive"])' }
             },
             required: ["path"]
+          }
+        },
+        {
+          name: "obsidian_get_config",
+          description: "Get the current vault configuration (paths, folders, etc.).",
+          inputSchema: {
+            type: "object",
+            properties: {}
           }
         },
         {
@@ -61711,6 +61368,7 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
             properties: {
               vault_path: { type: "string", description: "Optional vault path override" },
               workspace_path: { type: "string", description: "Optional workspace path override" },
+              vault_id: { type: "string", description: "Optional unique identifier for the vault" },
               file_path: { type: "string", description: "Relative path to a specific note to re-index" },
               force_reindex: { type: "boolean", description: "Force full re-index, ignoring cached file hashes (default: false)" }
             }
@@ -61725,7 +61383,8 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
               query: { type: "string", description: "Question or query to ask your notes" },
               limit: { type: "number", description: "Number of chunks to retrieve (default 5)" },
               vault_path: { type: "string", description: "Optional vault path override" },
-              workspace_path: { type: "string", description: "Optional workspace path override" }
+              workspace_path: { type: "string", description: "Optional workspace path override" },
+              vault_id: { type: "string", description: "Optional unique identifier for the vault" }
             },
             required: ["query"]
           }
@@ -61860,9 +61519,46 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         if (args2 && "workspace_path" in args2) {
           WORKSPACE_PATH = args2.workspace_path ? String(args2.workspace_path) : null;
         }
+        if (args2 && "vault_id" in args2) {
+          VAULT_ID = args2.vault_id ? String(args2.vault_id) : null;
+        }
+        if (args2 && "knowledge_folders" in args2 && Array.isArray(args2.knowledge_folders)) {
+          KNOWLEDGE_FOLDERS = args2.knowledge_folders.map((f) => String(f).trim()).filter(Boolean);
+        }
+        if (args2 && "moc_folders" in args2 && Array.isArray(args2.moc_folders)) {
+          MOC_FOLDERS = args2.moc_folders.map((f) => String(f).trim()).filter(Boolean);
+        }
+        if (args2 && "daily_note_folder" in args2) {
+          DAILY_NOTE_FOLDER = String(args2.daily_note_folder).trim();
+          if (DAILY_NOTE_FOLDER === "") {
+            console.warn("[Gemini Obsidian] Warning: daily_note_folder is empty; notes will be created in the vault root.");
+          }
+        }
+        if (args2 && "ignored_folders" in args2 && Array.isArray(args2.ignored_folders)) {
+          IGNORED_FOLDERS = args2.ignored_folders.map((f) => String(f).trim()).filter(Boolean);
+        }
         await indexer.reset();
-        await saveConfig(VAULT_PATH, WORKSPACE_PATH);
-        return { content: [{ type: "text", text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ""}` }] };
+        await saveConfig({
+          vaultPath: VAULT_PATH,
+          workspacePath: WORKSPACE_PATH,
+          vaultId: VAULT_ID,
+          knowledgeFolders: KNOWLEDGE_FOLDERS,
+          mocFolders: MOC_FOLDERS,
+          dailyNoteFolder: DAILY_NOTE_FOLDER,
+          ignoredFolders: IGNORED_FOLDERS
+        });
+        return { content: [{ type: "text", text: `Vault path set to: ${VAULT_PATH}` }] };
+      }
+      if (name2 === "obsidian_get_config") {
+        return { content: [{ type: "text", text: JSON.stringify({
+          vault_path: VAULT_PATH,
+          workspace_path: WORKSPACE_PATH,
+          vault_id: VAULT_ID,
+          knowledge_folders: KNOWLEDGE_FOLDERS,
+          moc_folders: MOC_FOLDERS,
+          daily_note_folder: DAILY_NOTE_FOLDER,
+          ignored_folders: IGNORED_FOLDERS
+        }, null, 2) }] };
       }
       if (name2 === "obsidian_list_notes") {
         const vp = getVaultPath(args2?.vault_path);
@@ -61895,9 +61591,8 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
       if (name2 === "obsidian_get_daily_note") {
         const vp = getVaultPath(args2?.vault_path);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, "Daily Notes")).catch(() => null) ? "Daily Notes" : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         let content = "";
         try {
           content = await fs4.readFile(filePath, "utf-8");
@@ -61932,13 +61627,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
       if (name2 === "obsidian_rag_index") {
         const vp = getVaultPath(args2?.vault_path);
         const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
         const fp = args2?.file_path ? String(args2.file_path) : null;
         const force = args2?.force_reindex === true;
         let result;
         if (fp) {
-          result = await indexer.indexFile(vp, fp, wp);
+          result = await indexer.indexFile(vp, fp, wp, vid);
         } else {
-          result = await indexer.indexVault(vp, force, wp);
+          result = await indexer.indexVault(vp, force, wp, vid);
         }
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       }
@@ -61947,7 +61643,8 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         const limit = Number(args2?.limit) || 5;
         const vp = getVaultPath(args2?.vault_path);
         const wp = getWorkspacePath(args2?.workspace_path);
-        const results = await indexer.search(query, vp, limit, wp);
+        const vid = getVaultId(args2?.vault_id);
+        const results = await indexer.search(query, vp, limit, wp, vid);
         const formatted = results.map(
           (r) => `---
 File: ${r.path}
@@ -62031,9 +61728,8 @@ Content: ${r.text}
         const heading = String(args2?.heading);
         const content = String(args2?.content);
         const dateStr = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-        const dailyFolder = await fs4.stat(path6.join(vp, "Daily Notes")).catch(() => null) ? "Daily Notes" : "";
         const fileName = `${dateStr}.md`;
-        const filePath = path6.join(vp, dailyFolder, fileName);
+        const filePath = path6.join(vp, DAILY_NOTE_FOLDER, fileName);
         let fileContent = "";
         try {
           fileContent = await fs4.readFile(filePath, "utf-8");
