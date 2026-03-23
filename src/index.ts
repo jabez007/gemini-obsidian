@@ -48,32 +48,86 @@ import {
   stripHeadingFromLink,
 } from './utils.js';
 
+interface SaveConfigOptions {
+    vaultPath: string;
+    workspacePath?: string | null;
+    vaultId?: string | null;
+    knowledgeFolders?: string[];
+    mocFolders?: string[];
+    dailyNoteFolder?: string;
+    ignoredFolders?: string[];
+}
+
+function parseCommaSeparatedEnv(envVar: string | undefined, defaultValue: string[]): string[] {
+    return envVar ? envVar.split(',').map(s => s.trim()).filter(Boolean) : defaultValue;
+}
+
+function parseTrimmedEnv(envVar: string | undefined, defaultValue: string): string {
+    return envVar ? envVar.trim() : defaultValue;
+}
+
+const DEFAULT_KNOWLEDGE_FOLDERS = ['Engineering'];
+const DEFAULT_MOC_FOLDERS = ['MOCs'];
+const DEFAULT_DAILY_NOTE_FOLDER = 'Daily Notes';
+const DEFAULT_IGNORED_FOLDERS = ['Daily Notes'];
+
 let VAULT_PATH: string | null = process.env.OBSIDIAN_VAULT_PATH || null;
 let WORKSPACE_PATH: string | null = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
 let VAULT_ID: string | null = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
+let KNOWLEDGE_FOLDERS: string[] = parseCommaSeparatedEnv(process.env.OBSIDIAN_KNOWLEDGE_FOLDERS, DEFAULT_KNOWLEDGE_FOLDERS);
+let MOC_FOLDERS: string[] = parseCommaSeparatedEnv(process.env.OBSIDIAN_MOC_FOLDERS, DEFAULT_MOC_FOLDERS);
+let DAILY_NOTE_FOLDER: string = parseTrimmedEnv(process.env.OBSIDIAN_DAILY_NOTE_FOLDER, DEFAULT_DAILY_NOTE_FOLDER);
+let IGNORED_FOLDERS: string[] = parseCommaSeparatedEnv(process.env.OBSIDIAN_IGNORED_FOLDERS, DEFAULT_IGNORED_FOLDERS);
+
 const indexer = new VaultIndexer();
 const CONFIG_PATH = path.join(os.homedir(), '.gemini-obsidian.config.json');
 
-async function saveConfig(vaultPath: string, workspacePath?: string | null, vaultId?: string | null) {
+async function saveConfig(options: SaveConfigOptions) {
     try {
         await fs.writeFile(CONFIG_PATH, JSON.stringify({ 
-            vault_path: vaultPath,
-            workspace_path: workspacePath || null,
-            vault_id: vaultId || null
+            vault_path: options.vaultPath,
+            workspace_path: options.workspacePath ?? null,
+            vault_id: options.vaultId ?? null,
+            knowledge_folders: options.knowledgeFolders ?? KNOWLEDGE_FOLDERS,
+            moc_folders: options.mocFolders ?? MOC_FOLDERS,
+            daily_note_folder: options.dailyNoteFolder ?? DAILY_NOTE_FOLDER,
+            ignored_folders: options.ignoredFolders ?? IGNORED_FOLDERS
         }), 'utf-8');
     } catch (e) { console.error("Failed to save config", e); }
 }
 
-async function loadConfig(): Promise<{ vault_path: string | null, workspace_path: string | null, vault_id: string | null }> {
+async function loadConfig(): Promise<{ 
+    vault_path: string | null, 
+    workspace_path: string | null, 
+    vault_id: string | null,
+    knowledge_folders: string[],
+    moc_folders: string[],
+    daily_note_folder: string,
+    ignored_folders: string[]
+}> {
     try {
         const data = await fs.readFile(CONFIG_PATH, 'utf-8');
         const config = JSON.parse(data);
         return {
             vault_path: config.vault_path || null,
             workspace_path: config.workspace_path || null,
-            vault_id: config.vault_id || null
+            vault_id: config.vault_id || null,
+            knowledge_folders: config.knowledge_folders || DEFAULT_KNOWLEDGE_FOLDERS,
+            moc_folders: config.moc_folders || DEFAULT_MOC_FOLDERS,
+            daily_note_folder: config.daily_note_folder || DEFAULT_DAILY_NOTE_FOLDER,
+            ignored_folders: config.ignored_folders || DEFAULT_IGNORED_FOLDERS
         };
-    } catch { return { vault_path: null, workspace_path: null, vault_id: null }; }
+    } catch { 
+        return { 
+            vault_path: null, 
+            workspace_path: null, 
+            vault_id: null,
+            knowledge_folders: DEFAULT_KNOWLEDGE_FOLDERS,
+            moc_folders: DEFAULT_MOC_FOLDERS,
+            daily_note_folder: DEFAULT_DAILY_NOTE_FOLDER,
+            ignored_folders: DEFAULT_IGNORED_FOLDERS
+        }; 
+    }
 }
 
 /**
@@ -130,12 +184,16 @@ async function readStdin(): Promise<string> {
   VAULT_PATH = VAULT_PATH || config.vault_path;
   WORKSPACE_PATH = WORKSPACE_PATH || config.workspace_path;
   VAULT_ID = VAULT_ID || config.vault_id;
+  KNOWLEDGE_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_KNOWLEDGE_FOLDERS, config.knowledge_folders);
+  MOC_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_MOC_FOLDERS, config.moc_folders);
+  DAILY_NOTE_FOLDER = parseTrimmedEnv(process.env.OBSIDIAN_DAILY_NOTE_FOLDER, config.daily_note_folder);
+  IGNORED_FOLDERS = parseCommaSeparatedEnv(process.env.OBSIDIAN_IGNORED_FOLDERS, config.ignored_folders);
 
   // Handle CLI args for one-shot mode
   const args = process.argv.slice(2);
   
   // If arguments start with a tool name (simple heuristic)
-  const knownTools = ['obsidian_list_notes', 'obsidian_read_note', 'obsidian_search_notes', 'obsidian_rag_index', 'obsidian_rag_query', 'obsidian_set_vault', 'obsidian_create_note', 'obsidian_append_note', 'obsidian_get_daily_note', 'obsidian_get_backlinks', 'obsidian_get_links', 'obsidian_move_note', 'obsidian_update_frontmatter', 'obsidian_append_daily_log', 'obsidian_replace_section', 'obsidian_insert_at_heading', 'obsidian_replace_in_note', 'obsidian_get_broken_links', 'validate_frontmatter'];
+  const knownTools = ['obsidian_list_notes', 'obsidian_read_note', 'obsidian_search_notes', 'obsidian_rag_index', 'obsidian_rag_query', 'obsidian_set_vault', 'obsidian_get_config', 'obsidian_create_note', 'obsidian_append_note', 'obsidian_get_daily_note', 'obsidian_get_backlinks', 'obsidian_get_links', 'obsidian_move_note', 'obsidian_update_frontmatter', 'obsidian_append_daily_log', 'obsidian_replace_section', 'obsidian_insert_at_heading', 'obsidian_replace_in_note', 'obsidian_get_broken_links', 'validate_frontmatter'];
   
   if (args.length > 0 && knownTools.includes(args[0])) {
     const toolName = args[0];
@@ -181,9 +239,8 @@ async function readStdin(): Promise<string> {
         } else if (toolName === 'obsidian_get_daily_note') {
              const vp = getVaultPath(parsedArgs.vault_path);
              const dateStr = new Date().toISOString().split('T')[0];
-             const dailyFolder = (await fs.stat(path.join(vp, 'Daily Notes')).catch(() => null)) ? 'Daily Notes' : '';
              const fileName = `${dateStr}.md`;
-             const filePath = path.join(vp, dailyFolder, fileName);
+             const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
              try {
                  result = await fs.readFile(filePath, 'utf-8');
              } catch (e) {
@@ -325,9 +382,8 @@ async function readStdin(): Promise<string> {
             const heading = String(parsedArgs.heading);
             const content = String(parsedArgs.content);
             const dateStr = new Date().toISOString().split('T')[0];
-            const dailyFolder = (await fs.stat(path.join(vp, 'Daily Notes')).catch(() => null)) ? 'Daily Notes' : '';
             const fileName = `${dateStr}.md`;
-            const filePath = path.join(vp, dailyFolder, fileName);
+            const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
             let fileContent = '';
             try { fileContent = await fs.readFile(filePath, 'utf-8'); } catch (e) {
                 await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -444,10 +500,43 @@ async function readStdin(): Promise<string> {
             if ('vault_id' in parsedArgs || 'id' in parsedArgs) {
                 VAULT_ID = (parsedArgs.vault_id || parsedArgs.id) ? String(parsedArgs.vault_id || parsedArgs.id) : null;
             }
+            if ('knowledge_folders' in parsedArgs) {
+                KNOWLEDGE_FOLDERS = String(parsedArgs.knowledge_folders).split(',').map(s => s.trim()).filter(Boolean);
+            }
+            if ('moc_folders' in parsedArgs) {
+                MOC_FOLDERS = String(parsedArgs.moc_folders).split(',').map(s => s.trim()).filter(Boolean);
+            }
+            if ('daily_note_folder' in parsedArgs) {
+                DAILY_NOTE_FOLDER = String(parsedArgs.daily_note_folder).trim();
+                if (DAILY_NOTE_FOLDER === '') {
+                    console.warn('[Gemini Obsidian] Warning: daily_note_folder is empty; notes will be created in the vault root.');
+                }
+            }
+            if ('ignored_folders' in parsedArgs) {
+                IGNORED_FOLDERS = String(parsedArgs.ignored_folders).split(',').map(s => s.trim()).filter(Boolean);
+            }
             VAULT_PATH = vp;
             await indexer.reset();
-            await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID);
-            result = `Vault path set to: ${vp}` + (WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : '') + (VAULT_ID ? ` with ID: ${VAULT_ID}` : '');
+            await saveConfig({
+                vaultPath: VAULT_PATH,
+                workspacePath: WORKSPACE_PATH,
+                vaultId: VAULT_ID,
+                knowledgeFolders: KNOWLEDGE_FOLDERS,
+                mocFolders: MOC_FOLDERS,
+                dailyNoteFolder: DAILY_NOTE_FOLDER,
+                ignoredFolders: IGNORED_FOLDERS
+            });
+            result = `Vault path set to: ${vp}`;
+        } else if (toolName === 'obsidian_get_config') {
+            result = JSON.stringify({
+                vault_path: VAULT_PATH,
+                workspace_path: WORKSPACE_PATH,
+                vault_id: VAULT_ID,
+                knowledge_folders: KNOWLEDGE_FOLDERS,
+                moc_folders: MOC_FOLDERS,
+                daily_note_folder: DAILY_NOTE_FOLDER,
+                ignored_folders: IGNORED_FOLDERS
+            }, null, 2);
         }
  else {
             console.error(`Unknown tool: ${toolName}`);
@@ -468,7 +557,7 @@ async function readStdin(): Promise<string> {
   const server = new Server(
     {
       name: 'gemini-obsidian',
-      version: '1.0.0',
+      version: '1.7.0',
     },
     {
       capabilities: {
@@ -482,15 +571,27 @@ async function readStdin(): Promise<string> {
       tools: [
         {
           name: 'obsidian_set_vault',
-          description: 'Set the default Obsidian vault path and optional workspace/ID for this session.',
+          description: 'Set the default Obsidian vault path and optional structure/ID for this session.',
           inputSchema: {
             type: 'object',
             properties: {
               path: { type: 'string', description: 'Absolute path to the Obsidian vault' },
               workspace_path: { type: 'string', description: 'Optional absolute path to the workspace root where .gemini-obsidian should be created.' },
               vault_id: { type: 'string', description: 'Optional unique identifier for this vault to share metadata across machines.' },
+              knowledge_folders: { type: 'array', items: { type: 'string' }, description: 'Folders for global knowledge notes (e.g., ["WORK", "LIFE"])' },
+              moc_folders: { type: 'array', items: { type: 'string' }, description: 'Folders where Maps of Content (MOCs) or Bases are stored (e.g., ["_SYS"])' },
+              daily_note_folder: { type: 'string', description: 'Folder where daily notes are stored (e.g., "JRNL")' },
+              ignored_folders: { type: 'array', items: { type: 'string' }, description: 'List of folders to ignore during audits/scans (e.g., ["JRNL", "Archive"])' },
             },
             required: ['path'],
+          },
+        },
+        {
+          name: 'obsidian_get_config',
+          description: 'Get the current vault configuration (paths, folders, etc.).',
+          inputSchema: {
+            type: 'object',
+            properties: {},
           },
         },
         {
@@ -727,9 +828,43 @@ async function readStdin(): Promise<string> {
           if (args && 'vault_id' in args) {
               VAULT_ID = args.vault_id ? String(args.vault_id) : null;
           }
+          if (args && 'knowledge_folders' in args && Array.isArray(args.knowledge_folders)) {
+              KNOWLEDGE_FOLDERS = args.knowledge_folders.map(f => String(f).trim()).filter(Boolean);
+          }
+          if (args && 'moc_folders' in args && Array.isArray(args.moc_folders)) {
+              MOC_FOLDERS = args.moc_folders.map(f => String(f).trim()).filter(Boolean);
+          }
+          if (args && 'daily_note_folder' in args) {
+              DAILY_NOTE_FOLDER = String(args.daily_note_folder).trim();
+              if (DAILY_NOTE_FOLDER === '') {
+                  console.warn('[Gemini Obsidian] Warning: daily_note_folder is empty; notes will be created in the vault root.');
+              }
+          }
+          if (args && 'ignored_folders' in args && Array.isArray(args.ignored_folders)) {
+              IGNORED_FOLDERS = args.ignored_folders.map(f => String(f).trim()).filter(Boolean);
+          }
           await indexer.reset();
-          await saveConfig(VAULT_PATH, WORKSPACE_PATH, VAULT_ID);
-          return { content: [{ type: 'text', text: `Vault path set to: ${VAULT_PATH}${WORKSPACE_PATH ? ` with workspace: ${WORKSPACE_PATH}` : ''}${VAULT_ID ? ` with ID: ${VAULT_ID}` : ''}` }] };
+          await saveConfig({
+              vaultPath: VAULT_PATH,
+              workspacePath: WORKSPACE_PATH,
+              vaultId: VAULT_ID,
+              knowledgeFolders: KNOWLEDGE_FOLDERS,
+              mocFolders: MOC_FOLDERS,
+              dailyNoteFolder: DAILY_NOTE_FOLDER,
+              ignoredFolders: IGNORED_FOLDERS
+          });
+          return { content: [{ type: 'text', text: `Vault path set to: ${VAULT_PATH}` }] };
+      }
+      if (name === 'obsidian_get_config') {
+          return { content: [{ type: 'text', text: JSON.stringify({
+              vault_path: VAULT_PATH,
+              workspace_path: WORKSPACE_PATH,
+              vault_id: VAULT_ID,
+              knowledge_folders: KNOWLEDGE_FOLDERS,
+              moc_folders: MOC_FOLDERS,
+              daily_note_folder: DAILY_NOTE_FOLDER,
+              ignored_folders: IGNORED_FOLDERS
+          }, null, 2) }] };
       }
       if (name === 'obsidian_list_notes') {
           const vp = getVaultPath(args?.vault_path as string);
@@ -761,9 +896,8 @@ async function readStdin(): Promise<string> {
       if (name === 'obsidian_get_daily_note') {
            const vp = getVaultPath(args?.vault_path as string);
            const dateStr = new Date().toISOString().split('T')[0];
-           const dailyFolder = (await fs.stat(path.join(vp, 'Daily Notes')).catch(() => null)) ? 'Daily Notes' : '';
            const fileName = `${dateStr}.md`;
-           const filePath = path.join(vp, dailyFolder, fileName);
+           const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
            let content = '';
            try {
                content = await fs.readFile(filePath, 'utf-8');
@@ -899,9 +1033,8 @@ async function readStdin(): Promise<string> {
           const content = String(args?.content);
 
           const dateStr = new Date().toISOString().split('T')[0];
-          const dailyFolder = (await fs.stat(path.join(vp, 'Daily Notes')).catch(() => null)) ? 'Daily Notes' : '';
           const fileName = `${dateStr}.md`;
-          const filePath = path.join(vp, dailyFolder, fileName);
+          const filePath = path.join(vp, DAILY_NOTE_FOLDER, fileName);
 
           let fileContent = '';
           try {
