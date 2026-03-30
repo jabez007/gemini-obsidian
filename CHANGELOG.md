@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.1] - 2026-03-30
+
+### Build & Maintenance
+- build(deps-dev): bump picomatch from 4.0.3 to 4.0.4
+
 ## [1.6.0] - 2026-03-19
 
 ### Features

@@ -1,3 +1,13 @@
+# Release v1.6.1
+
+## Summary
+Routine maintenance release. Bumps the `picomatch` dev-dependency from 4.0.3 to 4.0.4 (security/patch update via Dependabot). No functional changes.
+
+## Build & Maintenance
+- **picomatch** upgraded from 4.0.3 → 4.0.4 (dev dependency)
+
+---
+
 # Release v1.6.0
 
 ## Summary
