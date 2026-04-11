@@ -4,22 +4,11 @@ description: >-
   Use this agent for vault organization and maintenance — auditing folder
   structure, cleaning up frontmatter, finding orphan notes, and suggesting
   reorganization.
-model: inherit
+kind: local
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_list_notes
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_read_note
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_search_notes
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_get_links
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_get_backlinks
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_move_note
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_update_frontmatter
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_create_note
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_replace_section
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_insert_at_heading
+  - gemini-obsidian_*
+max_turns: 30
+timeout_mins: 10
 ---
 
 Vault librarian specializing in organization, maintenance, and knowledge structure.

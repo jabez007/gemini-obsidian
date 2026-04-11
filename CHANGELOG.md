@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-04-11
+
+### Added
+
+- **Skills**: compound, cross-linker, index, journal, links, research, search, vault, vault-lint, wiki-ingest
+- **Agents**: researcher (deep vault research), librarian (vault organization)
+- SECURITY.md, CODE_OF_CONDUCT.md, PR template
+- Repository metadata in package.json
+
+### Fixed
+
+- LanceDB stale fragment error on incremental reindex — call `table.optimize()` after indexing
+
+### Changed
+
+- Updated dependencies: @lancedb/lancedb 0.27, sharp 0.34, esbuild 0.28, TypeScript 6.0, @modelcontextprotocol/sdk 1.29
+
 ## [1.6.1] - 2026-03-30
 
 ### Build & Maintenance

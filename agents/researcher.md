@@ -4,18 +4,11 @@ description: >-
   Use this agent for deep vault research that requires chaining semantic search,
   reading multiple notes, and following link trails to synthesize comprehensive
   answers from the Obsidian vault.
-model: inherit
+kind: local
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_rag_query
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_read_note
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_search_notes
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_get_links
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_get_backlinks
-  - mcp__plugin_obsidian-rag_obsidian-rag__obsidian_list_notes
+  - gemini-obsidian_*
+max_turns: 30
+timeout_mins: 10
 ---
 
 Vault research specialist for deep knowledge retrieval from the user's Obsidian vault.

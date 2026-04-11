@@ -1,3 +1,22 @@
+# Release v1.7.0
+
+## Summary
+Adds 10 skills and 2 agents ported from obsidian-rag, fixes a LanceDB stale fragment bug that broke incremental reindexing, and updates all dependencies.
+
+## New Features
+- **Skills**: compound, cross-linker, index, journal, links, research, search, vault, vault-lint, wiki-ingest
+- **Agents**: researcher (deep vault research with semantic search chaining), librarian (vault organization and maintenance)
+
+## Bug Fixes
+- **LanceDB stale fragment error** — incremental reindex failed after full reindex due to uncompacted data fragments. Now calls `table.optimize()` after indexing.
+
+## Infrastructure
+- Updated dependencies: @lancedb/lancedb 0.27, sharp 0.34, esbuild 0.28, TypeScript 6.0, @modelcontextprotocol/sdk 1.29
+- Added SECURITY.md, CODE_OF_CONDUCT.md, PR template
+- Added repository metadata to package.json
+
+---
+
 # Release v1.6.1
 
 ## Summary
