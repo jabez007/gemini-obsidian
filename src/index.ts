@@ -557,7 +557,7 @@ async function readStdin(): Promise<string> {
   const server = new Server(
     {
       name: 'gemini-obsidian',
-      version: '1.7.0',
+      version: '1.8.0',
     },
     {
       capabilities: {

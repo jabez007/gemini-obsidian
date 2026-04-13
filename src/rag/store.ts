@@ -76,8 +76,17 @@ export class VaultIndexer {
     let baseStorePath: string;
     
     if (vaultId) {
-      // Shared metadata across machines: ~/.gemini-obsidian/vaults/<vaultId>
-      baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultId);
+      // Validate vaultId to prevent path traversal
+      if (vaultId.includes('/') || vaultId.includes('\\') || vaultId.includes('..')) {
+        throw new Error('Invalid vault_id: separators and traversal are not allowed');
+      }
+
+      if (workspacePath) {
+        baseStorePath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultId);
+      } else {
+        // Shared metadata across machines: ~/.gemini-obsidian/vaults/<vaultId>
+        baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultId);
+      }
     } else {
       const vaultHash = md5(path.resolve(vaultPath));
       if (workspacePath) {
