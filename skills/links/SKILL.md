@@ -23,6 +23,8 @@ The note path or name follows the skill invocation. Example: `/links Projects/My
 
 ## Tips
 
+- This skill focuses on explicit `[[wikilinks]]`.
+- For a broader "meta-graph" of connections, use `/research` to leverage graph-aware semantic search (based on `entities` and `communities` in frontmatter).
 - If the user provides just a name (no path), try searching for it first with `obsidian_search_notes`
 - For `obsidian_get_backlinks`, pass the note name without the `.md` extension
 - For `obsidian_get_links`, pass the full relative path with `.md`

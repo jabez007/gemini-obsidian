@@ -449,7 +449,7 @@ async function readStdin(): Promise<string> {
   const server = new Server(
     {
       name: 'gemini-obsidian',
-      version: '1.8.0',
+      version: '1.8.1',
     },
     {
       capabilities: {
@@ -555,7 +555,7 @@ async function readStdin(): Promise<string> {
         },
         {
           name: 'obsidian_rag_index',
-          description: 'Index the vault for semantic search (RAG). If file_path is provided, only that file is re-indexed. Incremental by default — only re-embeds changed files. Use force_reindex to rebuild from scratch.',
+          description: 'Index the vault for graph-aware semantic search (RAG). Automatically extracts and preserves YAML graph metadata (entities, communities) from frontmatter to enhance search context. If file_path is provided, only that file is re-indexed. Incremental by default — only re-embeds changed files. Use force_reindex to rebuild from scratch.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -569,7 +569,7 @@ async function readStdin(): Promise<string> {
         },
         {
           name: 'obsidian_rag_query',
-          description: 'Perform a semantic search on the indexed vault.',
+          description: 'Perform a graph-aware semantic search on the indexed vault. Leverages injected metadata (entities, communities) to surface more relevant and contextually linked information.',
           inputSchema: {
             type: 'object',
             properties: {

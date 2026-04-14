@@ -4,6 +4,10 @@ export interface ChunkingOptions {
   minChunkChars?: number;
   maxChunkChars?: number;
   targetChunkChars?: number;
+  graphMetadata?: {
+    entities?: string[];
+    communities?: string[];
+  };
 }
 
 const DEFAULTS = {
@@ -80,7 +84,13 @@ export function buildEmbeddingInputs(relativePath: string, body: string, options
 
   const paragraphs = body.split(/\n\s*\n/).filter(p => p.trim().length > 0);
   const rawSegments: string[] = [];
-  const chunkMetadata: { id: string; text: string; path: string }[] = [];
+  const chunkMetadata: { 
+    id: string; 
+    text: string; 
+    path: string;
+    entities?: string;
+    communities?: string;
+  }[] = [];
 
   for (let i = 0; i < paragraphs.length; i++) {
     const paragraph = paragraphs[i].trim();
@@ -94,14 +104,31 @@ export function buildEmbeddingInputs(relativePath: string, body: string, options
     }
   }
 
-  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
-  for (let chunkIndex = 0; chunkIndex < textsToEmbed.length; chunkIndex++) {
-    chunkMetadata.push({
-      id: md5(`${relativePath}-${chunkIndex}`),
-      path: relativePath,
-      text: textsToEmbed[chunkIndex]
-    });
+  let graphContext = '';
+  const entities = options?.graphMetadata?.entities;
+  const communities = options?.graphMetadata?.communities;
+
+  if ((entities && entities.length > 0) || (communities && communities.length > 0)) {
+    const parts = [];
+    if (entities && entities.length > 0) parts.push(`Entities: ${entities.join(', ')}`);
+    if (communities && communities.length > 0) parts.push(`Communities: ${communities.join(', ')}`);
+    graphContext = `[METADATA: ${parts.join(' | ')}]\n\n`;
   }
 
-  return { textsToEmbed, chunkMetadata };
+  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
+  const finalTexts = textsToEmbed.map(text => graphContext + text);
+
+  for (let chunkIndex = 0; chunkIndex < finalTexts.length; chunkIndex++) {
+    const meta: any = {
+      id: md5(`${relativePath}-${chunkIndex}`),
+      path: relativePath,
+      text: finalTexts[chunkIndex]
+    };
+    if (entities && entities.length > 0) meta.entities = entities.join(', ');
+    if (communities && communities.length > 0) meta.communities = communities.join(', ');
+    
+    chunkMetadata.push(meta);
+  }
+
+  return { textsToEmbed: finalTexts, chunkMetadata };
 }

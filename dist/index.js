@@ -60515,15 +60515,30 @@ function buildEmbeddingInputs(relativePath, body, options2) {
       rawSegments.push(segment);
     }
   }
+  let graphContext = "";
+  const entities = options2?.graphMetadata?.entities;
+  const communities = options2?.graphMetadata?.communities;
+  if (entities && entities.length > 0 || communities && communities.length > 0) {
+    const parts = [];
+    if (entities && entities.length > 0) parts.push(`Entities: ${entities.join(", ")}`);
+    if (communities && communities.length > 0) parts.push(`Communities: ${communities.join(", ")}`);
+    graphContext = `[METADATA: ${parts.join(" | ")}]
+
+`;
+  }
   const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
-  for (let chunkIndex = 0; chunkIndex < textsToEmbed.length; chunkIndex++) {
-    chunkMetadata.push({
+  const finalTexts = textsToEmbed.map((text) => graphContext + text);
+  for (let chunkIndex = 0; chunkIndex < finalTexts.length; chunkIndex++) {
+    const meta3 = {
       id: (0, import_md5.default)(`${relativePath}-${chunkIndex}`),
       path: relativePath,
-      text: textsToEmbed[chunkIndex]
-    });
+      text: finalTexts[chunkIndex]
+    };
+    if (entities && entities.length > 0) meta3.entities = entities.join(", ");
+    if (communities && communities.length > 0) meta3.communities = communities.join(", ");
+    chunkMetadata.push(meta3);
   }
-  return { textsToEmbed, chunkMetadata };
+  return { textsToEmbed: finalTexts, chunkMetadata };
 }
 
 // src/utils.ts
@@ -60742,8 +60757,18 @@ var VaultIndexer = class {
       const filePath = getSafeFilePath(vaultPath, relativePath);
       const content = await fs4.readFile(filePath, "utf-8");
       const contentHash = (0, import_md52.default)(content);
-      const { content: body } = (0, import_gray_matter2.default)(content);
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptionsFromEnv());
+      const { content: body, data: metadata } = (0, import_gray_matter2.default)(content);
+      const chunkingOptions = chunkingOptionsFromEnv();
+      const toArray = (val) => {
+        if (Array.isArray(val)) return val;
+        if (typeof val === "string") return [val];
+        return [];
+      };
+      chunkingOptions.graphMetadata = {
+        entities: toArray(metadata.entities),
+        communities: toArray(metadata.communities)
+      };
+      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptions);
       let hashes = {};
       try {
         hashes = JSON.parse(await fs4.readFile(hashPath, "utf-8"));
@@ -60851,8 +60876,18 @@ var VaultIndexer = class {
               this.validatePath(relativePath);
               changedHashes[relativePath] = contentHash;
               changedPaths.push(relativePath);
-              const { content: body } = (0, import_gray_matter2.default)(content);
-              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+              const { content: body, data: metadata } = (0, import_gray_matter2.default)(content);
+              const chunkingOptions = chunkingOptionsFromEnv();
+              const toArray = (val) => {
+                if (Array.isArray(val)) return val;
+                if (typeof val === "string") return [val];
+                return [];
+              };
+              chunkingOptions.graphMetadata = {
+                entities: toArray(metadata.entities),
+                communities: toArray(metadata.communities)
+              };
+              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptions);
               if (inputs.textsToEmbed.length > 0) {
                 expectedChunkCounts[relativePath] = inputs.textsToEmbed.length;
                 return inputs;

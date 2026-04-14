@@ -182,9 +182,20 @@ export class VaultIndexer {
 
       const content = await fs.readFile(filePath, 'utf-8');
       const contentHash = md5(content);
-      const { content: body } = matter(content);
+      const { content: body, data: metadata } = matter(content);
 
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptionsFromEnv());
+      const chunkingOptions = chunkingOptionsFromEnv();
+      const toArray = (val: any) => {
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') return [val];
+        return [];
+      };
+      chunkingOptions.graphMetadata = {
+        entities: toArray(metadata.entities),
+        communities: toArray(metadata.communities)
+      };
+
+      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptions);
 
       // Load hashes to update
       let hashes: Record<string, string> = {};
@@ -312,8 +323,18 @@ export class VaultIndexer {
               this.validatePath(relativePath);
               changedHashes[relativePath] = contentHash;
               changedPaths.push(relativePath);
-              const { content: body } = matter(content);
-              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+              const { content: body, data: metadata } = matter(content);
+              const chunkingOptions = chunkingOptionsFromEnv();
+              const toArray = (val: any) => {
+                if (Array.isArray(val)) return val;
+                if (typeof val === 'string') return [val];
+                return [];
+              };
+              chunkingOptions.graphMetadata = {
+                entities: toArray(metadata.entities),
+                communities: toArray(metadata.communities)
+              };
+              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptions);
               
               if (inputs.textsToEmbed.length > 0) {
                 expectedChunkCounts[relativePath] = inputs.textsToEmbed.length;
