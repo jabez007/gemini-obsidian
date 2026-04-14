@@ -17,7 +17,7 @@
     "BeforeTool": [],
     "AfterTool": [
       {
-        "matcher": "obsidian_(create|append)_note|obsidian_update_frontmatter|obsidian_append_daily_log|obsidian_replace_section|obsidian_insert_at_heading|obsidian_replace_in_note",
+        "matcher": "obsidian_(create|append)_note|obsidian_update_frontmatter|obsidian_replace_section|obsidian_insert_at_heading|obsidian_replace_in_note",
         "hooks": [
           {
             "name": "obsidian-reindex",
