@@ -10,16 +10,14 @@ All notable changes to this project will be documented in this file.
 - feat(obsidian): add support for multiple isolated vaults using hashed global cache
 - feat(config): persist vault/workspace paths; allow environment variables to override persisted values at load time
 - feat(rag): support vault_id for shared metadata across machines
-- feat(config): add configurable vault folders and expose obsidian_get_config tool
-
-### Fixed
-
-- fix(rag): implement atomic hash updates to prevent stale index on partial failures
-- fix(rag): harden path validation to support Windows separators and Unicode filenames
-- fix(rag): ensure stale database connections are cleared when switching vaults
+- feat(obsidian): native integration with Obsidian's core **Daily Notes** plugin configuration
+- feat(obsidian): enhance `obsidian_get_daily_note` to return structured path and content
 
 ### Refactor
 
+- refactor: remove opinionated vault management skills (`wiki-ingest`, `vault-lint`, etc.) and `librarian` agent
+- refactor: delete `obsidian_append_daily_log` and `validate_frontmatter` tools
+- refactor: shift structured logging responsibility to agent-side skills
 - refactor(rag): implement thread-safe locking for database operations
 - refactor(rag): decouple storage path resolution from singleton state
 
