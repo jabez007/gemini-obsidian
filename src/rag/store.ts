@@ -75,9 +75,27 @@ export class VaultIndexer {
   private async getPaths(vaultPath: string, workspacePath?: string | null, vaultId?: string | null) {
     let baseStorePath: string;
     
+    if (workspacePath) {
+      if (!path.isAbsolute(workspacePath)) {
+        throw new Error(`Invalid workspace_path: must be an absolute path. Received: ${workspacePath}`);
+      }
+      if (workspacePath.split(/[\\/]/).some(s => s === '..')) {
+        throw new Error(`Invalid workspace_path: traversal segments are not allowed. Received: ${workspacePath}`);
+      }
+    }
+
     if (vaultId) {
-      // Shared metadata across machines: ~/.gemini-obsidian/vaults/<vaultId>
-      baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultId);
+      // Validate vaultId to prevent path traversal
+      if (vaultId.includes('/') || vaultId.includes('\\') || vaultId.includes('..')) {
+        throw new Error('Invalid vault_id: separators and traversal are not allowed');
+      }
+
+      if (workspacePath) {
+        baseStorePath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultId);
+      } else {
+        // Shared metadata across machines: ~/.gemini-obsidian/vaults/<vaultId>
+        baseStorePath = path.join(os.homedir(), '.gemini-obsidian', 'vaults', vaultId);
+      }
     } else {
       const vaultHash = md5(path.resolve(vaultPath));
       if (workspacePath) {

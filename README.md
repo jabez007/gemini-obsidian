@@ -125,7 +125,6 @@ The following tools are exposed to the Gemini agent:
 ### Management & Journaling
 - `obsidian_create_note`: Create a new markdown note.
 - `obsidian_append_note`: Append text to the end of a note.
-- `obsidian_append_daily_log`: Append text to a specific heading (e.g., "Log") in today's daily note with a timestamp.
 - `obsidian_move_note`: Rename or move a note.
 - `obsidian_update_frontmatter`: Safely update YAML frontmatter keys in single-key or batch mode.
 - `obsidian_replace_section`: Replace the body of a heading without touching the rest of the file.
@@ -136,9 +135,11 @@ The following tools are exposed to the Gemini agent:
 ## Skills
 
 - `obsidian-companion`: Tool selection and vault workflow guidance.
-- `compound`: Promote repeated project knowledge into durable global notes.
-- `moc-update`: Suggest Maps of Content that should link to a newly created note.
-- `link-audit`: Audit broken links, orphans, and cleanup opportunities.
+- `research`: Multi-pass synthesis using RAG and graph traversal.
+- `index`: RAG index management.
+- `search`: Keyword and filename search.
+- `links`: Note connection graph exploration.
+- `vault`: Vault and workspace configuration.
 
 ## Development
 

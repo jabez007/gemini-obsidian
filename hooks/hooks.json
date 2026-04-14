@@ -14,23 +14,10 @@
         ]
       }
     ],
-    "BeforeTool": [
-      {
-        "matcher": "obsidian_create_note",
-        "hooks": [
-          {
-            "name": "obsidian-validate-frontmatter",
-            "type": "command",
-            "command": "bash ${extensionPath}/scripts/validate-frontmatter.sh",
-            "timeout": 10000,
-            "description": "Blocks note creation when required frontmatter fields are missing."
-          }
-        ]
-      }
-    ],
+    "BeforeTool": [],
     "AfterTool": [
       {
-        "matcher": "obsidian_(create|append)_note|obsidian_update_frontmatter|obsidian_append_daily_log|obsidian_replace_section|obsidian_insert_at_heading|obsidian_replace_in_note",
+        "matcher": "obsidian_(create|append)_note|obsidian_update_frontmatter|obsidian_replace_section|obsidian_insert_at_heading|obsidian_replace_in_note",
         "hooks": [
           {
             "name": "obsidian-reindex",

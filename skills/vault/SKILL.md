@@ -23,3 +23,8 @@ If no path is provided:
 ## Confirmation
 
 After setting, confirm: "Vault path set to: [path]"
+
+## Tips
+
+- You can also set a custom `workspace_path` (for metadata storage) or a `vault_id` (for sharing metadata across machines) using the `obsidian_set_vault` tool.
+- If the vault path is invalid, the agent will ask for a correction.
