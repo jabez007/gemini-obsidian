@@ -30,12 +30,15 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 - **Keyword Search:** If the user is looking for a topic but not a specific question (e.g., "Find notes about 'cooking'"), use `obsidian_search_notes`.
 - **Complex Q&A:** For questions requiring synthesis (e.g., "What have I learned about React this month?"), use `obsidian_rag_query`.
 
-### 3. Writing Strategy
+### 3. Writing & Logging Strategy
 
-- **Quick Capture:** If the user says "Log this" or "Remember that...", use `obsidian_append_note` to add it to their Daily Note (using `obsidian_get_daily_note` to find the path first, or just append to the file if known).
-- **New Ideas:** Use `obsidian_create_note` for substantial new topics.
-- **Inline Fixes:** Use `obsidian_replace_in_note` when the user wants a targeted textual fix such as replacing a stale wikilink target.
-- **Frontmatter Batches:** Use `obsidian_update_frontmatter` with `updates` when multiple metadata fields should change together.
+- **Structured Logging:** To log an entry (e.g., meeting summary, task, or thought), follow this workflow:
+    1.  **Retrieve Daily Note:** Call `obsidian_get_daily_note` to get the current note's `file_path`.
+    2.  **Format Entry:** Prepare your summary preceded by a separator (e.g., `\n---\n\nYour summary here`).
+    3.  **Insert:** Use `obsidian_insert_at_heading` with the `file_path` from step 1. Use a relevant heading like "Work Log", "Meetings", or "Notes".
+- **Quick Capture:** For simple, untimestamped additions, use `obsidian_append_note` on the target file.
+- **New Topics:** Use `obsidian_create_note` for substantial new subjects.
+- **Surgical Fixes:** Use `obsidian_replace_in_note` for targeted textual updates.
 
 ### 4. Context Management
 
@@ -49,7 +52,9 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 **Agent:** (Calculates dates, checks `obsidian_rag_query` with "work done last week" OR checks specific daily notes via `obsidian_list_notes` + `obsidian_read_note`)
 
 **User:** "Log that I finished the API integration."
-**Agent:** (Gets today's date) `obsidian_append_note(file_path="Daily Notes/2024-05-21.md", content="- Finished API integration")`
+**Agent:** 
+1. Calls `obsidian_get_daily_note()` -> returns `{"file_path": "JRNL/2026/04/2026-04-13.md", ...}`
+2. Calls `obsidian_insert_at_heading(file_path="JRNL/2026/04/2026-04-13.md", heading="Work Log", content="\n---\n\nFinished the API integration.")`
 
 **User:** "Index my vault."
 **Agent:** `obsidian_rag_index(vault_path="/Users/me/Vault")`
