@@ -7,7 +7,7 @@ description: >-
 
 # Index Vault
 
-Trigger vault indexing for semantic search (RAG).
+Trigger vault indexing for semantic search (RAG). This process automatically extracts and preserves YAML graph metadata (`entities`, `communities`) to enhance search context.
 
 ## Default Action
 

@@ -60444,6 +60444,15 @@ var DEFAULTS = {
   maxChunkChars: 1800,
   targetChunkChars: 700
 };
+function normalizeToStringArray(val) {
+  if (Array.isArray(val)) {
+    return val.filter((item) => typeof item === "string");
+  }
+  if (typeof val === "string") {
+    return [val];
+  }
+  return [];
+}
 function splitTextForEmbedding(text, maxChars = DEFAULTS.maxChunkChars) {
   const normalized = text.trim().replace(/\s+/g, " ");
   if (normalized.length <= maxChars) return [normalized];
@@ -60515,15 +60524,39 @@ function buildEmbeddingInputs(relativePath, body, options2) {
       rawSegments.push(segment);
     }
   }
-  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
-  for (let chunkIndex = 0; chunkIndex < textsToEmbed.length; chunkIndex++) {
-    chunkMetadata.push({
+  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, Math.min(targetChunkChars, maxChunkChars));
+  const entities = options2?.graphMetadata?.entities;
+  const communities = options2?.graphMetadata?.communities;
+  const wrapperOverhead = 14;
+  const minMetadataChars = 20;
+  const finalTexts = textsToEmbed.map((text) => {
+    const hasMetadata = entities && entities.length > 0 || communities && communities.length > 0;
+    const effectiveMaxTextLen = hasMetadata ? maxChunkChars - wrapperOverhead - minMetadataChars : maxChunkChars;
+    const baseText = text.length > effectiveMaxTextLen ? text.slice(0, effectiveMaxTextLen) : text;
+    if (!hasMetadata) {
+      return baseText;
+    }
+    const parts = [];
+    if (entities && entities.length > 0) parts.push(`Entities: ${entities.join(", ")}`);
+    if (communities && communities.length > 0) parts.push(`Communities: ${communities.join(", ")}`);
+    const fullMetaContent = parts.join(" | ");
+    const available = maxChunkChars - baseText.length - wrapperOverhead;
+    const truncatedMeta = fullMetaContent.length > available ? fullMetaContent.slice(0, available) : fullMetaContent;
+    return `[METADATA: ${truncatedMeta}]
+
+${baseText}`;
+  });
+  for (let chunkIndex = 0; chunkIndex < finalTexts.length; chunkIndex++) {
+    const meta3 = {
       id: (0, import_md5.default)(`${relativePath}-${chunkIndex}`),
       path: relativePath,
-      text: textsToEmbed[chunkIndex]
-    });
+      text: finalTexts[chunkIndex]
+    };
+    if (entities && entities.length > 0) meta3.entities = entities.join(", ");
+    if (communities && communities.length > 0) meta3.communities = communities.join(", ");
+    chunkMetadata.push(meta3);
   }
-  return { textsToEmbed, chunkMetadata };
+  return { textsToEmbed: finalTexts, chunkMetadata };
 }
 
 // src/utils.ts
@@ -60742,8 +60775,13 @@ var VaultIndexer = class {
       const filePath = getSafeFilePath(vaultPath, relativePath);
       const content = await fs4.readFile(filePath, "utf-8");
       const contentHash = (0, import_md52.default)(content);
-      const { content: body } = (0, import_gray_matter2.default)(content);
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptionsFromEnv());
+      const { content: body, data: metadata } = (0, import_gray_matter2.default)(content);
+      const chunkingOptions = chunkingOptionsFromEnv();
+      chunkingOptions.graphMetadata = {
+        entities: normalizeToStringArray(metadata.entities),
+        communities: normalizeToStringArray(metadata.communities)
+      };
+      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptions);
       let hashes = {};
       try {
         hashes = JSON.parse(await fs4.readFile(hashPath, "utf-8"));
@@ -60851,8 +60889,13 @@ var VaultIndexer = class {
               this.validatePath(relativePath);
               changedHashes[relativePath] = contentHash;
               changedPaths.push(relativePath);
-              const { content: body } = (0, import_gray_matter2.default)(content);
-              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+              const { content: body, data: metadata } = (0, import_gray_matter2.default)(content);
+              const chunkingOptions = chunkingOptionsFromEnv();
+              chunkingOptions.graphMetadata = {
+                entities: normalizeToStringArray(metadata.entities),
+                communities: normalizeToStringArray(metadata.communities)
+              };
+              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptions);
               if (inputs.textsToEmbed.length > 0) {
                 expectedChunkCounts[relativePath] = inputs.textsToEmbed.length;
                 return inputs;
@@ -61399,7 +61442,7 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
   const server = new Server(
     {
       name: "gemini-obsidian",
-      version: "1.8.0"
+      version: "1.8.1"
     },
     {
       capabilities: {
@@ -61504,7 +61547,7 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         },
         {
           name: "obsidian_rag_index",
-          description: "Index the vault for semantic search (RAG). If file_path is provided, only that file is re-indexed. Incremental by default \u2014 only re-embeds changed files. Use force_reindex to rebuild from scratch.",
+          description: "Index the vault for graph-aware semantic search (RAG). Automatically extracts and preserves YAML graph metadata (entities, communities) from frontmatter to enhance search context. If file_path is provided, only that file is re-indexed. Incremental by default \u2014 only re-embeds changed files. Use force_reindex to rebuild from scratch.",
           inputSchema: {
             type: "object",
             properties: {
@@ -61518,7 +61561,7 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         },
         {
           name: "obsidian_rag_query",
-          description: "Perform a semantic search on the indexed vault.",
+          description: "Perform a graph-aware semantic search on the indexed vault. Leverages injected metadata (entities, communities) to surface more relevant and contextually linked information.",
           inputSchema: {
             type: "object",
             properties: {

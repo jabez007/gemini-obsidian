@@ -9,11 +9,11 @@ description: >-
 
 # Deep Vault Research
 
-Research a topic across the user's Obsidian vault using a multi-pass approach.
+Research a topic across the user's Obsidian vault using a multi-pass, graph-aware approach.
 
 ## Workflow
 
-1. **Semantic Discovery** — Call `obsidian_rag_query` with the user's question (limit 5-10). This surfaces the most relevant chunks across the vault.
+1. **Semantic Discovery** — Call `obsidian_rag_query` with the user's question. This surfaces the most relevant chunks, leveraging prepended graph metadata (`entities`, `communities`) for better contextual matching.
 
 2. **Targeted Reading** — For each high-relevance result, call `obsidian_read_note` to get the full context. Skim for the most pertinent sections.
 

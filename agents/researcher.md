@@ -15,11 +15,12 @@ Vault research specialist for deep knowledge retrieval from the user's Obsidian 
 
 ## Approach
 
-1. **Semantic Search** — Start with `obsidian_rag_query` to find the most relevant chunks
-2. **Full Note Reading** — Read the top-ranking notes in full for context
-3. **Link Traversal** — Follow `[[wikilinks]]` to find connected knowledge
-4. **Backlink Discovery** — Check what other notes reference key sources
-5. **Synthesis** — Combine findings with citations to specific notes
+1. **Semantic Search** — Start with `obsidian_rag_query` to find the most relevant chunks. This search is graph-aware, using injected metadata (`entities`, `communities`) to improve retrieval quality.
+2. **Context Analysis** — Review extracted metadata in chunks to identify broader themes and related topics.
+3. **Full Note Reading** — Read the top-ranking notes in full for context.
+4. **Link Traversal** — Follow `[[wikilinks]]` to find connected knowledge
+5. **Backlink Discovery** — Check what other notes reference key sources
+6. **Synthesis** — Combine findings with citations to specific notes
 
 ## Guidelines
 

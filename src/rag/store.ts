@@ -6,7 +6,7 @@ import { glob } from 'glob';
 import matter from 'gray-matter';
 import md5 from 'md5';
 import { Embedder } from './embedder.js';
-import { buildEmbeddingInputs, ChunkingOptions } from './chunking.js';
+import { buildEmbeddingInputs, ChunkingOptions, normalizeToStringArray } from './chunking.js';
 import { getSafeFilePath } from '../utils.js';
 
 function chunkingOptionsFromEnv(): ChunkingOptions {
@@ -182,9 +182,15 @@ export class VaultIndexer {
 
       const content = await fs.readFile(filePath, 'utf-8');
       const contentHash = md5(content);
-      const { content: body } = matter(content);
+      const { content: body, data: metadata } = matter(content);
 
-      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptionsFromEnv());
+      const chunkingOptions = chunkingOptionsFromEnv();
+      chunkingOptions.graphMetadata = {
+        entities: normalizeToStringArray(metadata.entities),
+        communities: normalizeToStringArray(metadata.communities)
+      };
+
+      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptions);
 
       // Load hashes to update
       let hashes: Record<string, string> = {};
@@ -312,8 +318,13 @@ export class VaultIndexer {
               this.validatePath(relativePath);
               changedHashes[relativePath] = contentHash;
               changedPaths.push(relativePath);
-              const { content: body } = matter(content);
-              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptionsFromEnv());
+              const { content: body, data: metadata } = matter(content);
+              const chunkingOptions = chunkingOptionsFromEnv();
+              chunkingOptions.graphMetadata = {
+                entities: normalizeToStringArray(metadata.entities),
+                communities: normalizeToStringArray(metadata.communities)
+              };
+              const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptions);
               
               if (inputs.textsToEmbed.length > 0) {
                 expectedChunkCounts[relativePath] = inputs.textsToEmbed.length;
