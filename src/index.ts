@@ -468,7 +468,7 @@ async function readStdin(): Promise<string> {
         },
         {
           name: 'obsidian_get_config',
-          description: 'Get the current vault configuration (paths, folders, etc.).',
+          description: 'Get the current vault configuration (vault_path, workspace_path, vault_id).',
           inputSchema: {
             type: 'object',
             properties: {},
