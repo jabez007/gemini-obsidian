@@ -124,16 +124,25 @@ function getVaultId(providedId?: string): string | null {
 /**
  * Helper to get Obsidian Daily Note configuration
  */
-async function getDailyNoteConfig(vaultPath: string): Promise<{ folder: string, format: string }> {
+export async function getDailyNoteConfig(vaultPath: string): Promise<{ folder: string, format: string }> {
     const configPath = path.join(vaultPath, '.obsidian', 'daily-notes.json');
     try {
         const data = await fs.readFile(configPath, 'utf-8');
         const config = JSON.parse(data);
+        let folder = String(config.folder || '').trim();
+        
+        // Sanitize folder: strip leading/trailing slashes, reject '..' traversal
+        folder = folder.replace(/^[\\/]+|[\\/]+$/g, '');
+        if (folder.split(/[\\/]/).some(s => s === '..')) {
+            throw new Error(`Invalid daily note folder (traversal): ${folder}`);
+        }
+
         return {
-            folder: config.folder || '',
+            folder,
             format: config.format || DEFAULT_DAILY_NOTE_FORMAT
         };
-    } catch {
+    } catch (e: any) {
+        if (e.message?.includes('traversal')) throw e;
         return { folder: '', format: DEFAULT_DAILY_NOTE_FORMAT };
     }
 }
@@ -219,7 +228,7 @@ async function readStdin(): Promise<string> {
              const vp = getVaultPath(parsedArgs.vault_path);
              const dailyConfig = await getDailyNoteConfig(vp);
              const relativePath = path.join(dailyConfig.folder, moment().format(dailyConfig.format) + '.md');
-             const filePath = path.join(vp, relativePath);
+             const filePath = getSafeFilePath(vp, relativePath);
              let content = '';
              try {
                  content = await fs.readFile(filePath, 'utf-8');
@@ -228,7 +237,7 @@ async function readStdin(): Promise<string> {
                  content = `# ${moment().format(dailyConfig.format)}\n\n`;
                  await fs.writeFile(filePath, content, 'utf-8');
              }
-             result = JSON.stringify({ file_path: relativePath, content });
+             result = JSON.stringify({ file_path: path.relative(vp, filePath), content });
         } else if (toolName === 'obsidian_search_notes') {
             const vp = getVaultPath(parsedArgs.vault_path);
             const query = String(parsedArgs.query).toLowerCase();
@@ -732,7 +741,7 @@ async function readStdin(): Promise<string> {
            const vp = getVaultPath(args?.vault_path as string);
            const dailyConfig = await getDailyNoteConfig(vp);
            const relativePath = path.join(dailyConfig.folder, moment().format(dailyConfig.format) + '.md');
-           const filePath = path.join(vp, relativePath);
+           const filePath = getSafeFilePath(vp, relativePath);
            let content = '';
            try {
                content = await fs.readFile(filePath, 'utf-8');
@@ -741,7 +750,7 @@ async function readStdin(): Promise<string> {
                content = `# ${moment().format(dailyConfig.format)}\n\n`;
                await fs.writeFile(filePath, content, 'utf-8');
            }
-           return { content: [{ type: 'text', text: JSON.stringify({ file_path: relativePath, content }) }] };
+           return { content: [{ type: 'text', text: JSON.stringify({ file_path: path.relative(vp, filePath), content }) }] };
       }
       if (name === 'obsidian_search_notes') {
           const vp = getVaultPath(args?.vault_path as string);

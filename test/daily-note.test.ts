@@ -3,33 +3,22 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import moment from 'moment';
-
-/**
- * Simplified mock of the getDailyNoteConfig logic from src/index.ts
- */
-async function getDailyNoteConfig(vaultPath: string): Promise<{ folder: string, format: string }> {
-    const configPath = path.join(vaultPath, '.obsidian', 'daily-notes.json');
-    try {
-        const data = await fs.readFile(configPath, 'utf-8');
-        const config = JSON.parse(data);
-        return {
-            folder: config.folder || '',
-            format: config.format || 'YYYY-MM-DD'
-        };
-    } catch {
-        return { folder: '', format: 'YYYY-MM-DD' };
-    }
-}
+import { getDailyNoteConfig } from '../src/index';
 
 describe('Daily Note Logic', () => {
   let vaultDir: string;
+  const fixedDate = '2026-04-13';
 
   beforeEach(async () => {
     vaultDir = await fs.mkdtemp(path.join(os.tmpdir(), 'daily-note-test-'));
+    // Mock system time for moment() - use midday to avoid timezone shifts
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-13T12:00:00'));
   });
 
   afterEach(async () => {
     await fs.rm(vaultDir, { recursive: true, force: true });
+    vi.useRealTimers();
   });
 
   it('respects simple folder and format from .obsidian/daily-notes.json', async () => {
@@ -48,7 +37,7 @@ describe('Daily Note Logic', () => {
     
     expect(dailyConfig.folder).toBe('Journal');
     expect(dailyConfig.format).toBe('YYYY-MM-DD');
-    expect(relativePath).toBe(`Journal/${dateStr}.md`);
+    expect(relativePath).toBe(path.join('Journal', `${fixedDate}.md`));
   });
 
   it('handles nested date formats (subfolders)', async () => {
@@ -65,13 +54,40 @@ describe('Daily Note Logic', () => {
     const datePath = moment().format(dailyConfig.format);
     const relativePath = path.join(dailyConfig.folder, datePath + '.md');
     
-    const expectedDatePath = moment().format('YYYY/MM/YYYY-MM-DD');
-    expect(relativePath).toBe(`JRNL/${expectedDatePath}.md`);
+    const expectedDatePath = path.join('2026', '04', '2026-04-13');
+    expect(relativePath).toBe(path.join('JRNL', `${expectedDatePath}.md`));
+  });
+
+  it('sanitizes leading slashes and trailing whitespace in folder', async () => {
+    const obsidianDir = path.join(vaultDir, '.obsidian');
+    await fs.mkdir(obsidianDir, { recursive: true });
+    
+    const config = {
+      folder: ' /Internal/Daily/ ',
+      format: 'YYYY-MM-DD'
+    };
+    await fs.writeFile(path.join(obsidianDir, 'daily-notes.json'), JSON.stringify(config));
+
+    const dailyConfig = await getDailyNoteConfig(vaultDir);
+    expect(dailyConfig.folder).toBe(path.join('Internal', 'Daily'));
+  });
+
+  it('rejects path traversal in daily note folder', async () => {
+    const obsidianDir = path.join(vaultDir, '.obsidian');
+    await fs.mkdir(obsidianDir, { recursive: true });
+    
+    const config = {
+      folder: '../outside',
+      format: 'YYYY-MM-DD'
+    };
+    await fs.writeFile(path.join(obsidianDir, 'daily-notes.json'), JSON.stringify(config));
+
+    await expect(getDailyNoteConfig(vaultDir)).rejects.toThrow('traversal');
   });
 
   it('falls back to defaults if config is missing', async () => {
     const dailyConfig = await getDailyNoteConfig(vaultDir);
-    const dateStr = moment().format('YYYY-MM-DD');
+    const dateStr = fixedDate;
     
     expect(dailyConfig.folder).toBe('');
     expect(dailyConfig.format).toBe('YYYY-MM-DD');

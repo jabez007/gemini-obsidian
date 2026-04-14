@@ -75,6 +75,15 @@ export class VaultIndexer {
   private async getPaths(vaultPath: string, workspacePath?: string | null, vaultId?: string | null) {
     let baseStorePath: string;
     
+    if (workspacePath) {
+      if (!path.isAbsolute(workspacePath)) {
+        throw new Error(`Invalid workspace_path: must be an absolute path. Received: ${workspacePath}`);
+      }
+      if (workspacePath.split(/[\\/]/).some(s => s === '..')) {
+        throw new Error(`Invalid workspace_path: traversal segments are not allowed. Received: ${workspacePath}`);
+      }
+    }
+
     if (vaultId) {
       // Validate vaultId to prevent path traversal
       if (vaultId.includes('/') || vaultId.includes('\\') || vaultId.includes('..')) {

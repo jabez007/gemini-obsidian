@@ -8,11 +8,11 @@ This release introduces robust workspace isolation and enhanced vault configurat
   - Specify a `workspace_path` to store vector indices and file hashes in a dedicated project folder.
   - Automatically defaults to a **Hashed Global Cache** when no workspace is provided, ensuring unique indices for every vault.
   - Track AI metadata in Git alongside your notes for better portability.
-  - Configure specific folders for `knowledge`, `moc`, and `daily_notes`, or ignore specific directories via `obsidian_set_vault`.
-  - support `vault_id` for shared metadata across machines.
+  - Configure a custom `workspace_path` or `vault_id` for granular storage control via `obsidian_set_vault`.
+  - Native integration with Obsidian's core **Daily Notes** plugin configuration.
 
 - **New Configuration Tool**:
-  - `obsidian_get_config`: Retrieve the current session configuration, including all folder settings and paths.
+  - `obsidian_get_config`: Retrieve the current session configuration, returning `vault_path`, `workspace_path`, and `vault_id`.
 
 ## Reliability & Performance
 - **Atomic Indexing**: Precise chunk tracking and atomic hash updates ensure consistency even during partial failures.
