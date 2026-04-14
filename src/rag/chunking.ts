@@ -104,19 +104,32 @@ export function buildEmbeddingInputs(relativePath: string, body: string, options
     }
   }
 
-  let graphContext = '';
+  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
   const entities = options?.graphMetadata?.entities;
   const communities = options?.graphMetadata?.communities;
 
-  if ((entities && entities.length > 0) || (communities && communities.length > 0)) {
+  const finalTexts = textsToEmbed.map(text => {
+    if ((!entities || entities.length === 0) && (!communities || communities.length === 0)) {
+      return text;
+    }
+
     const parts = [];
     if (entities && entities.length > 0) parts.push(`Entities: ${entities.join(', ')}`);
     if (communities && communities.length > 0) parts.push(`Communities: ${communities.join(', ')}`);
-    graphContext = `[METADATA: ${parts.join(' | ')}]\n\n`;
-  }
+    const fullMetaContent = parts.join(' | ');
 
-  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
-  const finalTexts = textsToEmbed.map(text => graphContext + text);
+    // Wrapper: "[METADATA: " (11) + "]\n\n" (3) = 14 chars
+    const wrapperOverhead = 14;
+    const available = maxChunkChars - text.length - wrapperOverhead;
+
+    if (available <= 0) return text;
+
+    const truncatedMeta = fullMetaContent.length > available
+      ? fullMetaContent.slice(0, available)
+      : fullMetaContent;
+
+    return `[METADATA: ${truncatedMeta}]\n\n${text}`;
+  });
 
   for (let chunkIndex = 0; chunkIndex < finalTexts.length; chunkIndex++) {
     const meta: any = {

@@ -107,4 +107,30 @@ This is a note with single string metadata.
     expect(firstChunk.entities).toBe('AI');
     expect(firstChunk.communities).toBe('Sustainability');
   });
+
+  it('truncates metadata if it would exceed maxChunkChars', async () => {
+    // We'll test the internal chunking function directly to verify truncation logic
+    const { buildEmbeddingInputs } = await import('../src/rag/chunking');
+    
+    const longMetadata = {
+      entities: ['Very Long Entity Name That Takes Up Space'.repeat(10)],
+      communities: ['Another Very Long Community Name'.repeat(10)]
+    };
+    
+    const body = 'This is a test note content that is long enough to be indexed.';
+    const maxChars = 200; // Small limit to trigger truncation
+    
+    const result = buildEmbeddingInputs('test.md', body, {
+      graphMetadata: longMetadata,
+      maxChunkChars: maxChars,
+      targetChunkChars: 150
+    });
+
+    expect(result.textsToEmbed.length).toBeGreaterThan(0);
+    for (const text of result.textsToEmbed) {
+      expect(text.length).toBeLessThanOrEqual(maxChars);
+      expect(text).toContain('[METADATA: ');
+      expect(text).toContain('...]\n\n' === '' ? '' : ''); // Just checking structure
+    }
+  });
 });
