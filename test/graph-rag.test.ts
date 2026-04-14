@@ -117,20 +117,19 @@ This is a note with single string metadata.
       communities: ['Another Very Long Community Name'.repeat(10)]
     };
     
-    const body = 'This is a test note content that is long enough to be indexed.';
+    const body = 'This is a test note content that is long enough to be indexed.'.repeat(10);
     const maxChars = 200; // Small limit to trigger truncation
     
     const result = buildEmbeddingInputs('test.md', body, {
       graphMetadata: longMetadata,
       maxChunkChars: maxChars,
-      targetChunkChars: 150
+      targetChunkChars: 500 // Higher than max to test clamping
     });
 
     expect(result.textsToEmbed.length).toBeGreaterThan(0);
     for (const text of result.textsToEmbed) {
       expect(text.length).toBeLessThanOrEqual(maxChars);
       expect(text).toContain('[METADATA: ');
-      expect(text).toContain('...]\n\n' === '' ? '' : ''); // Just checking structure
     }
   });
 });

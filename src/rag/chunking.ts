@@ -119,13 +119,27 @@ export function buildEmbeddingInputs(relativePath: string, body: string, options
     }
   }
 
-  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
+  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, Math.min(targetChunkChars, maxChunkChars));
   const entities = options?.graphMetadata?.entities;
   const communities = options?.graphMetadata?.communities;
 
+  // Wrapper: "[METADATA: " (11) + "]\n\n" (3) = 14 chars
+  const wrapperOverhead = 14;
+  const minMetadataChars = 20; // Ensure at least 20 chars of metadata if present
+
   const finalTexts = textsToEmbed.map(text => {
-    if ((!entities || entities.length === 0) && (!communities || communities.length === 0)) {
-      return text;
+    const hasMetadata = (entities && entities.length > 0) || (communities && communities.length > 0);
+    
+    // If we have metadata, we MUST leave room for it.
+    // We truncate the base text to ensure at least minMetadataChars can fit.
+    const effectiveMaxTextLen = hasMetadata 
+      ? maxChunkChars - wrapperOverhead - minMetadataChars
+      : maxChunkChars;
+
+    const baseText = text.length > effectiveMaxTextLen ? text.slice(0, effectiveMaxTextLen) : text;
+
+    if (!hasMetadata) {
+      return baseText;
     }
 
     const parts = [];
@@ -133,17 +147,14 @@ export function buildEmbeddingInputs(relativePath: string, body: string, options
     if (communities && communities.length > 0) parts.push(`Communities: ${communities.join(', ')}`);
     const fullMetaContent = parts.join(' | ');
 
-    // Wrapper: "[METADATA: " (11) + "]\n\n" (3) = 14 chars
-    const wrapperOverhead = 14;
-    const available = maxChunkChars - text.length - wrapperOverhead;
-
-    if (available <= 0) return text;
+    const available = maxChunkChars - baseText.length - wrapperOverhead;
+    // available will be at least minMetadataChars (20) because of effectiveMaxTextLen
 
     const truncatedMeta = fullMetaContent.length > available
       ? fullMetaContent.slice(0, available)
       : fullMetaContent;
 
-    return `[METADATA: ${truncatedMeta}]\n\n${text}`;
+    return `[METADATA: ${truncatedMeta}]\n\n${baseText}`;
   });
 
   for (let chunkIndex = 0; chunkIndex < finalTexts.length; chunkIndex++) {

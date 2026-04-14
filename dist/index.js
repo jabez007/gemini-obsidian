@@ -60524,24 +60524,27 @@ function buildEmbeddingInputs(relativePath, body, options2) {
       rawSegments.push(segment);
     }
   }
-  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, targetChunkChars);
+  const textsToEmbed = mergeSegmentsForEmbedding(rawSegments, Math.min(targetChunkChars, maxChunkChars));
   const entities = options2?.graphMetadata?.entities;
   const communities = options2?.graphMetadata?.communities;
+  const wrapperOverhead = 14;
+  const minMetadataChars = 20;
   const finalTexts = textsToEmbed.map((text) => {
-    if ((!entities || entities.length === 0) && (!communities || communities.length === 0)) {
-      return text;
+    const hasMetadata = entities && entities.length > 0 || communities && communities.length > 0;
+    const effectiveMaxTextLen = hasMetadata ? maxChunkChars - wrapperOverhead - minMetadataChars : maxChunkChars;
+    const baseText = text.length > effectiveMaxTextLen ? text.slice(0, effectiveMaxTextLen) : text;
+    if (!hasMetadata) {
+      return baseText;
     }
     const parts = [];
     if (entities && entities.length > 0) parts.push(`Entities: ${entities.join(", ")}`);
     if (communities && communities.length > 0) parts.push(`Communities: ${communities.join(", ")}`);
     const fullMetaContent = parts.join(" | ");
-    const wrapperOverhead = 14;
-    const available = maxChunkChars - text.length - wrapperOverhead;
-    if (available <= 0) return text;
+    const available = maxChunkChars - baseText.length - wrapperOverhead;
     const truncatedMeta = fullMetaContent.length > available ? fullMetaContent.slice(0, available) : fullMetaContent;
     return `[METADATA: ${truncatedMeta}]
 
-${text}`;
+${baseText}`;
   });
   for (let chunkIndex = 0; chunkIndex < finalTexts.length; chunkIndex++) {
     const meta3 = {
