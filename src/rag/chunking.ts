@@ -16,6 +16,21 @@ const DEFAULTS = {
   targetChunkChars: 700,
 } as const;
 
+/**
+ * Normalizes an unknown value to a string array.
+ * Coerces single strings to [string], filters out non-string entries in arrays, 
+ * and returns [] for all other types.
+ */
+export function normalizeToStringArray(val: unknown): string[] {
+  if (Array.isArray(val)) {
+    return val.filter((item): item is string => typeof item === 'string');
+  }
+  if (typeof val === 'string') {
+    return [val];
+  }
+  return [];
+}
+
 export function splitTextForEmbedding(text: string, maxChars: number = DEFAULTS.maxChunkChars): string[] {
   const normalized = text.trim().replace(/\s+/g, ' ');
   if (normalized.length <= maxChars) return [normalized];

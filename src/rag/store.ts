@@ -6,7 +6,7 @@ import { glob } from 'glob';
 import matter from 'gray-matter';
 import md5 from 'md5';
 import { Embedder } from './embedder.js';
-import { buildEmbeddingInputs, ChunkingOptions } from './chunking.js';
+import { buildEmbeddingInputs, ChunkingOptions, normalizeToStringArray } from './chunking.js';
 import { getSafeFilePath } from '../utils.js';
 
 function chunkingOptionsFromEnv(): ChunkingOptions {
@@ -185,14 +185,9 @@ export class VaultIndexer {
       const { content: body, data: metadata } = matter(content);
 
       const chunkingOptions = chunkingOptionsFromEnv();
-      const toArray = (val: any) => {
-        if (Array.isArray(val)) return val;
-        if (typeof val === 'string') return [val];
-        return [];
-      };
       chunkingOptions.graphMetadata = {
-        entities: toArray(metadata.entities),
-        communities: toArray(metadata.communities)
+        entities: normalizeToStringArray(metadata.entities),
+        communities: normalizeToStringArray(metadata.communities)
       };
 
       const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(normalizedPath, body, chunkingOptions);
@@ -325,14 +320,9 @@ export class VaultIndexer {
               changedPaths.push(relativePath);
               const { content: body, data: metadata } = matter(content);
               const chunkingOptions = chunkingOptionsFromEnv();
-              const toArray = (val: any) => {
-                if (Array.isArray(val)) return val;
-                if (typeof val === 'string') return [val];
-                return [];
-              };
               chunkingOptions.graphMetadata = {
-                entities: toArray(metadata.entities),
-                communities: toArray(metadata.communities)
+                entities: normalizeToStringArray(metadata.entities),
+                communities: normalizeToStringArray(metadata.communities)
               };
               const inputs = buildEmbeddingInputs(relativePath, body, chunkingOptions);
               
