@@ -210,9 +210,18 @@ export class VaultIndexer {
               table = await db.createTable('notes', chunkRows);
           } else {
               table = await db.openTable('notes');
-              // Delete old chunks for this file
-              await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
-              await table.add(chunkRows);
+              const schema = await table.schema();
+              const hasEntities = schema.fields.some(f => f.name === 'entities');
+              
+              if (!hasEntities) {
+                  console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
+                  await db.dropTable('notes');
+                  table = await db.createTable('notes', chunkRows);
+              } else {
+                  // Delete old chunks for this file
+                  await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+                  await table.add(chunkRows);
+              }
           }
           await table.optimize();
           
@@ -388,6 +397,15 @@ export class VaultIndexer {
       // For incremental mode: delete old chunks for changed/deleted files, keep existing table
       if (canIncremental) {
         table = await db.openTable('notes');
+        const schema = await table.schema();
+        const hasEntities = schema.fields.some(f => f.name === 'entities');
+        
+        if (!hasEntities) {
+          console.error("Schema mismatch detected (missing 'entities'). Switching to full reindex.");
+          // Force full reindex by resetting canIncremental and following the else path
+          return this.indexVault(vaultPath, true, workspacePath, vaultId);
+        }
+
         const pathsToDelete = [...changedPaths, ...deletedPaths];
         if (pathsToDelete.length > 0) {
           const DELETE_BATCH = 100;
@@ -438,9 +456,19 @@ export class VaultIndexer {
 
           if (!tableInitialized) {
             try {
-              await db.dropTable('notes');
-            } catch (e) { /* ignore if not exists */ }
-            table = await db.createTable('notes', chunkRows);
+              table = await db.openTable('notes');
+              const schema = await table.schema();
+              const hasEntities = schema.fields.some(f => f.name === 'entities');
+              if (!hasEntities) {
+                console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
+                await db.dropTable('notes');
+                table = await db.createTable('notes', chunkRows);
+              } else {
+                await table.add(chunkRows);
+              }
+            } catch (e) {
+              table = await db.createTable('notes', chunkRows);
+            }
             tableInitialized = true;
           } else {
             if (!table) {
