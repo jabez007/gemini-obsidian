@@ -92,20 +92,25 @@ export function mergeSegmentsForEmbedding(segments: string[], targetChars: numbe
   return merged;
 }
 
-export function buildEmbeddingInputs(relativePath: string, body: string, options?: ChunkingOptions) {
+export interface NoteMetadata {
+  id: string;
+  path: string;
+  text: string;
+  entities: string;
+  communities: string;
+}
+
+export function buildEmbeddingInputs(relativePath: string, body: string, options?: ChunkingOptions): { 
+  textsToEmbed: string[], 
+  chunkMetadata: NoteMetadata[] 
+} {
   const minChunkChars = options?.minChunkChars ?? DEFAULTS.minChunkChars;
   const maxChunkChars = options?.maxChunkChars ?? DEFAULTS.maxChunkChars;
   const targetChunkChars = options?.targetChunkChars ?? DEFAULTS.targetChunkChars;
 
   const paragraphs = body.split(/\n\s*\n/).filter(p => p.trim().length > 0);
   const rawSegments: string[] = [];
-  const chunkMetadata: { 
-    id: string; 
-    text: string; 
-    path: string;
-    entities?: string;
-    communities?: string;
-  }[] = [];
+  const chunkMetadata: NoteMetadata[] = [];
 
   for (let i = 0; i < paragraphs.length; i++) {
     const paragraph = paragraphs[i].trim();
@@ -158,13 +163,13 @@ export function buildEmbeddingInputs(relativePath: string, body: string, options
   });
 
   for (let chunkIndex = 0; chunkIndex < finalTexts.length; chunkIndex++) {
-    const meta: any = {
+    const meta: NoteMetadata = {
       id: md5(`${relativePath}-${chunkIndex}`),
       path: relativePath,
-      text: finalTexts[chunkIndex]
+      text: finalTexts[chunkIndex],
+      entities: (entities && entities.length > 0) ? entities.join(', ') : '',
+      communities: (communities && communities.length > 0) ? communities.join(', ') : '',
     };
-    if (entities && entities.length > 0) meta.entities = entities.join(', ');
-    if (communities && communities.length > 0) meta.communities = communities.join(', ');
     
     chunkMetadata.push(meta);
   }

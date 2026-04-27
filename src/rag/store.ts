@@ -6,7 +6,7 @@ import { glob } from 'glob';
 import matter from 'gray-matter';
 import md5 from 'md5';
 import { Embedder } from './embedder.js';
-import { buildEmbeddingInputs, ChunkingOptions, normalizeToStringArray } from './chunking.js';
+import { buildEmbeddingInputs, ChunkingOptions, normalizeToStringArray, NoteMetadata } from './chunking.js';
 import { getSafeFilePath } from '../utils.js';
 
 function chunkingOptionsFromEnv(): ChunkingOptions {
@@ -19,10 +19,7 @@ function chunkingOptionsFromEnv(): ChunkingOptions {
   return { minChunkChars: min, maxChunkChars: max, targetChunkChars: target };
 }
 
-interface NoteChunk {
-  id: string;
-  path: string;
-  text: string;
+interface NoteChunk extends NoteMetadata {
   vector: number[];
 }
 
@@ -143,7 +140,7 @@ export class VaultIndexer {
   private async embedWithFallback(
     embedder: Embedder,
     texts: string[],
-    meta: { id: string; text: string; path: string }[]
+    meta: NoteMetadata[]
   ): Promise<NoteChunk[]> {
     if (texts.length === 0) return [];
 
@@ -273,7 +270,7 @@ export class VaultIndexer {
 
       // ── Phase 1: Read all files, compute hashes, build chunks for changed files ──
       const allTexts: string[] = [];
-      const allMeta: { id: string; text: string; path: string }[] = [];
+      const allMeta: NoteMetadata[] = [];
       const changedHashes: Record<string, string> = {}; // Hashes of files we are attempting to index
       const expectedChunkCounts: Record<string, number> = {}; // Expected total chunks per file
       const currentHashes: Record<string, string> = { ...previousHashes }; // Start with old hashes
