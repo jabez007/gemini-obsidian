@@ -24,6 +24,8 @@ interface NoteChunk {
   path: string;
   text: string;
   vector: number[];
+  entities: string;
+  communities: string;
 }
 
 export class VaultIndexer {

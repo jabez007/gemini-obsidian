@@ -82,8 +82,8 @@ This is just a simple note without any special graph entities or communities in 
     const firstChunk = searchResults[0];
     
     expect(firstChunk.text).not.toContain('[METADATA:');
-    expect(firstChunk.entities).toBeUndefined();
-    expect(firstChunk.communities).toBeUndefined();
+    expect(firstChunk.entities).toBe('');
+    expect(firstChunk.communities).toBe('');
   });
 
   it('handles single string metadata (not just arrays)', async () => {

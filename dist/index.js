@@ -60550,10 +60550,10 @@ ${baseText}`;
     const meta3 = {
       id: (0, import_md5.default)(`${relativePath}-${chunkIndex}`),
       path: relativePath,
-      text: finalTexts[chunkIndex]
+      text: finalTexts[chunkIndex],
+      entities: entities && entities.length > 0 ? entities.join(", ") : "",
+      communities: communities && communities.length > 0 ? communities.join(", ") : ""
     };
-    if (entities && entities.length > 0) meta3.entities = entities.join(", ");
-    if (communities && communities.length > 0) meta3.communities = communities.join(", ");
     chunkMetadata.push(meta3);
   }
   return { textsToEmbed: finalTexts, chunkMetadata };

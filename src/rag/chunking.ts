@@ -161,10 +161,10 @@ export function buildEmbeddingInputs(relativePath: string, body: string, options
     const meta: any = {
       id: md5(`${relativePath}-${chunkIndex}`),
       path: relativePath,
-      text: finalTexts[chunkIndex]
+      text: finalTexts[chunkIndex],
+      entities: (entities && entities.length > 0) ? entities.join(', ') : '',
+      communities: (communities && communities.length > 0) ? communities.join(', ') : '',
     };
-    if (entities && entities.length > 0) meta.entities = entities.join(', ');
-    if (communities && communities.length > 0) meta.communities = communities.join(', ');
     
     chunkMetadata.push(meta);
   }
