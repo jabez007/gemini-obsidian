@@ -23,6 +23,12 @@ interface NoteChunk extends NoteMetadata {
   vector: number[];
 }
 
+export interface IndexResult {
+  success: boolean;
+  chunks?: number;
+  message?: string;
+}
+
 export class VaultIndexer {
   private db: lancedb.Connection | null = null;
   private currentDbPath: string | null = null;
@@ -169,7 +175,7 @@ export class VaultIndexer {
     return recovered;
   }
 
-  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null, vaultId?: string | null) {
+  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null, vaultId?: string | null): Promise<IndexResult> {
     const release = await this.acquireLock();
     try {
       const normalizedPath = this.validatePath(relativePath);
@@ -248,7 +254,7 @@ export class VaultIndexer {
     }
   }
 
-  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null, vaultId?: string | null) {
+  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null, vaultId?: string | null): Promise<IndexResult> {
     const release = await this.acquireLock();
     try {
       const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
