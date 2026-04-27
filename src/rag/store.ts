@@ -23,6 +23,12 @@ interface NoteChunk extends NoteMetadata {
   vector: number[];
 }
 
+export interface IndexResult {
+  success: boolean;
+  chunks?: number;
+  message?: string;
+}
+
 export class VaultIndexer {
   private db: lancedb.Connection | null = null;
   private currentDbPath: string | null = null;
@@ -169,7 +175,7 @@ export class VaultIndexer {
     return recovered;
   }
 
-  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null, vaultId?: string | null) {
+  public async indexFile(vaultPath: string, relativePath: string, workspacePath?: string | null, vaultId?: string | null): Promise<IndexResult> {
     const release = await this.acquireLock();
     try {
       const normalizedPath = this.validatePath(relativePath);
@@ -210,9 +216,18 @@ export class VaultIndexer {
               table = await db.createTable('notes', chunkRows);
           } else {
               table = await db.openTable('notes');
-              // Delete old chunks for this file
-              await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
-              await table.add(chunkRows);
+              const schema = await table.schema();
+              const hasEntities = schema.fields.some(f => f.name === 'entities');
+              
+              if (!hasEntities) {
+                  console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
+                  await db.dropTable('notes');
+                  table = await db.createTable('notes', chunkRows);
+              } else {
+                  // Delete old chunks for this file
+                  await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+                  await table.add(chunkRows);
+              }
           }
           await table.optimize();
           
@@ -239,7 +254,7 @@ export class VaultIndexer {
     }
   }
 
-  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null, vaultId?: string | null) {
+  public async indexVault(vaultPath: string, force: boolean = false, workspacePath?: string | null, vaultId?: string | null): Promise<IndexResult> {
     const release = await this.acquireLock();
     try {
       const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
@@ -388,6 +403,15 @@ export class VaultIndexer {
       // For incremental mode: delete old chunks for changed/deleted files, keep existing table
       if (canIncremental) {
         table = await db.openTable('notes');
+        const schema = await table.schema();
+        const hasEntities = schema.fields.some(f => f.name === 'entities');
+        
+        if (!hasEntities) {
+          console.error("Schema mismatch detected (missing 'entities'). Switching to full reindex.");
+          // Force full reindex by resetting canIncremental and following the else path
+          return this.indexVault(vaultPath, true, workspacePath, vaultId);
+        }
+
         const pathsToDelete = [...changedPaths, ...deletedPaths];
         if (pathsToDelete.length > 0) {
           const DELETE_BATCH = 100;
@@ -438,9 +462,19 @@ export class VaultIndexer {
 
           if (!tableInitialized) {
             try {
-              await db.dropTable('notes');
-            } catch (e) { /* ignore if not exists */ }
-            table = await db.createTable('notes', chunkRows);
+              table = await db.openTable('notes');
+              const schema = await table.schema();
+              const hasEntities = schema.fields.some(f => f.name === 'entities');
+              if (!hasEntities) {
+                console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
+                await db.dropTable('notes');
+                table = await db.createTable('notes', chunkRows);
+              } else {
+                await table.add(chunkRows);
+              }
+            } catch (e) {
+              table = await db.createTable('notes', chunkRows);
+            }
             tableInitialized = true;
           } else {
             if (!table) {

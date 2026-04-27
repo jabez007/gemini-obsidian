@@ -60800,8 +60800,16 @@ var VaultIndexer = class {
           table = await db.createTable("notes", chunkRows);
         } else {
           table = await db.openTable("notes");
-          await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
-          await table.add(chunkRows);
+          const schema = await table.schema();
+          const hasEntities = schema.fields.some((f) => f.name === "entities");
+          if (!hasEntities) {
+            console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
+            await db.dropTable("notes");
+            table = await db.createTable("notes", chunkRows);
+          } else {
+            await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+            await table.add(chunkRows);
+          }
         }
         await table.optimize();
         hashes[normalizedPath] = contentHash;
@@ -60946,6 +60954,12 @@ var VaultIndexer = class {
       const persistedChunkCounts = {};
       if (canIncremental) {
         table = await db.openTable("notes");
+        const schema = await table.schema();
+        const hasEntities = schema.fields.some((f) => f.name === "entities");
+        if (!hasEntities) {
+          console.error("Schema mismatch detected (missing 'entities'). Switching to full reindex.");
+          return this.indexVault(vaultPath, true, workspacePath, vaultId);
+        }
         const pathsToDelete = [...changedPaths, ...deletedPaths];
         if (pathsToDelete.length > 0) {
           const DELETE_BATCH = 100;
@@ -60989,10 +61003,19 @@ var VaultIndexer = class {
           const chunkRows = chunks;
           if (!tableInitialized) {
             try {
-              await db.dropTable("notes");
+              table = await db.openTable("notes");
+              const schema = await table.schema();
+              const hasEntities = schema.fields.some((f) => f.name === "entities");
+              if (!hasEntities) {
+                console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
+                await db.dropTable("notes");
+                table = await db.createTable("notes", chunkRows);
+              } else {
+                await table.add(chunkRows);
+              }
             } catch (e) {
+              table = await db.createTable("notes", chunkRows);
             }
-            table = await db.createTable("notes", chunkRows);
             tableInitialized = true;
           } else {
             if (!table) {
