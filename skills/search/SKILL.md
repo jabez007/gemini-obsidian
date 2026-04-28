@@ -1,8 +1,10 @@
 ---
 name: search
 description: >-
-  Use when the user wants to find notes by keyword or filename, or says
-  "search", "find notes", or "look for".
+  Find specific files, notes, or documentation within the user's personal 
+  knowledge base. Use when the user wants to "find", "locate", or "search 
+  for" specific topics they have written about. Best for retrieving exact 
+  matches or specific filenames from the user's records.
 ---
 
 # Search Vault

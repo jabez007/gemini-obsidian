@@ -1,9 +1,11 @@
 ---
 name: researcher
 description: >-
-  Use this agent for deep vault research that requires chaining semantic search,
-  reading multiple notes, and following link trails to synthesize comprehensive
-  answers from the Obsidian vault.
+  An autonomous specialist for deep, multi-turn investigation of the user's 
+  personal knowledge base and records. Use for complex inquiries that 
+  require synthesizing information from many notes, following conceptual 
+  trails, and producing comprehensive reports on the user's own data and 
+  documented thoughts.
 kind: local
 tools:
   - mcp_gemini-obsidian_*
