@@ -1,3 +1,12 @@
+---
+name: obsidian-companion
+description: >-
+  The primary skill for interacting with an Obsidian vault. Use for basic 
+  operations like reading notes, writing/appending content, managing daily 
+  notes, and general vault maintenance. For searching or deep research, 
+  prefer the specialized 'search' or 'research' skills.
+---
+
 # Obsidian Companion Skill
 
 ## Description
@@ -10,8 +19,8 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 - **Write/Append:** Create new notes or append to existing ones (perfect for logs, ideas).
 - **Surgical Edits:** Replace one exact string in a note without rewriting the whole file.
 - **Daily Notes:** Quickly access or create today's daily journal entry.
-- **Search:** Find notes by keyword or filename.
-- **Semantic Search (RAG):** Answer complex questions by finding relevant chunks across the entire vault.
+- **Search:** Find notes by keyword or filename (Delegates to `/search`).
+- **Semantic Search (RAG):** Answer complex questions by finding relevant chunks across the entire vault (Delegates to `/research`).
 - **Indexing:** Build a local vector index of the vault to enable RAG.
 - **Link Audits:** Find broken wikilinks before they rot the graph.
 
@@ -27,8 +36,8 @@ This skill enables you to act as an expert companion for the user's Obsidian Vau
 ### 2. Retrieval Strategy
 
 - **Specific Note:** If the user asks for a specific file (e.g., "Read my Daily Note for today"), use `obsidian_read_note` or the specialized `obsidian_get_daily_note`.
-- **Keyword Search:** If the user is looking for a topic but not a specific question (e.g., "Find notes about 'cooking'"), use `obsidian_search_notes`.
-- **Complex Q&A:** For questions requiring synthesis (e.g., "What have I learned about React this month?"), use `obsidian_rag_query`.
+- **Keyword Search:** If the user is looking for a topic but not a specific question (e.g., "Find notes about 'cooking'"), use the `/search` skill.
+- **Complex Q&A:** For questions requiring synthesis (e.g., "What have I learned about React this month?"), use the `/research` skill.
 
 ### 3. Writing & Logging Strategy
 

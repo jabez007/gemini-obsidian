@@ -1,10 +1,11 @@
 ---
 name: research
 description: >-
-  Use when the user asks a question about their vault, wants to explore a topic
-  across notes, or says "research", "find out", "what do I know about", or
-  "summarize my notes on". Chains semantic search, note reading, and link
-  traversal for deep vault research.
+  Answer questions or synthesize information based on the user's personal 
+  knowledge, notes, and past thoughts. Use when the user asks "what do I 
+  know about...", "summarize my ideas on...", or needs to retrieve 
+  conceptual information from their own documentation. Employs RAG to 
+  search across all personal records.
 ---
 
 # Deep Vault Research
