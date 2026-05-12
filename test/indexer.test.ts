@@ -144,4 +144,21 @@ describe('VaultIndexer path resolution and storage', () => {
     expect(searchResults[0].path).toBe('test-note.md');
     expect(searchResults[0].text).toContain('cats');
   });
+
+  it('creates an FTS index on the text column during indexing', async () => {
+    await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a sufficiently long note to pass the minimum chunk size filter of forty characters.', 'utf-8');
+    
+    await indexer.indexVault(vaultPath, false, workspacePath);
+    
+    const lancedb = await import('@lancedb/lancedb');
+    const vaultHash = md5(path.resolve(vaultPath));
+    const dbPath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash, 'lancedb');
+    
+    const db = await lancedb.connect(dbPath);
+    const table = await db.openTable('notes');
+    const indices = await table.listIndices();
+    
+    const ftsIndex = indices.find((idx: any) => idx.indexType === 'FTS' && idx.columns.includes('text'));
+    expect(ftsIndex).toBeDefined();
+  });
 });

@@ -60798,6 +60798,11 @@ var VaultIndexer = class {
         let table;
         if (!tableNames.includes("notes")) {
           table = await db.createTable("notes", chunkRows);
+          try {
+            await table.createIndex("text", { config: lancedb.Index.fts() });
+          } catch (e) {
+            console.error("FTS error", e);
+          }
         } else {
           table = await db.openTable("notes");
           const schema = await table.schema();
@@ -60806,7 +60811,17 @@ var VaultIndexer = class {
             console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
             await db.dropTable("notes");
             table = await db.createTable("notes", chunkRows);
+            try {
+              await table.createIndex("text", { config: lancedb.Index.fts() });
+            } catch (e) {
+              console.error("FTS error", e);
+            }
           } else {
+            try {
+              await table.createIndex("text", { config: lancedb.Index.fts() });
+            } catch (e) {
+              console.error("FTS error", e);
+            }
             await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
             await table.add(chunkRows);
           }
@@ -61010,11 +61025,26 @@ var VaultIndexer = class {
                 console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
                 await db.dropTable("notes");
                 table = await db.createTable("notes", chunkRows);
+                try {
+                  await table.createIndex("text", { config: lancedb.Index.fts() });
+                } catch (e) {
+                  console.error("FTS error", e);
+                }
               } else {
+                try {
+                  await table.createIndex("text", { config: lancedb.Index.fts() });
+                } catch (e) {
+                  console.error("FTS error", e);
+                }
                 await table.add(chunkRows);
               }
             } catch (e) {
               table = await db.createTable("notes", chunkRows);
+              try {
+                await table.createIndex("text", { config: lancedb.Index.fts() });
+              } catch (e2) {
+                console.error("FTS error", e2);
+              }
             }
             tableInitialized = true;
           } else {
@@ -61082,8 +61112,14 @@ var VaultIndexer = class {
       }
       const embedder = Embedder.getInstance();
       const vector = await embedder.embed(query);
-      const results = await table.vectorSearch(vector).limit(limit).toArray();
-      return results;
+      try {
+        const results = await table.search(vector).fullTextSearch(query).limit(limit).toArray();
+        return results;
+      } catch (err) {
+        console.error("FTS Hybrid Search failed, falling back to vector search. Consider running a full re-index.", err);
+        const results = await table.vectorSearch(vector).limit(limit).toArray();
+        return results;
+      }
     } finally {
       release();
     }
@@ -61097,20 +61133,30 @@ try {
   const ortVersion = require(ortPackagePath).version;
   const isCompatibleOrt = typeof ortVersion === "string" && /^1\.14(\.|$)/.test(ortVersion);
   if (!isCompatibleOrt) {
-    console.error("\n[Gemini Obsidian] Error: Incompatible onnxruntime-node version detected.");
+    console.error(
+      "\n[Gemini Obsidian] Error: Incompatible onnxruntime-node version detected."
+    );
     console.error(`Installed: ${ortVersion ?? "unknown"}, required: 1.14.x`);
-    console.error("This project bundles @xenova/transformers 2.17.x, which requires onnxruntime-node 1.14.x.");
+    console.error(
+      "This project bundles @xenova/transformers 2.17.x, which requires onnxruntime-node 1.14.x."
+    );
     console.error("Please run:");
-    console.error(`  cd ${require("path").join(__dirname, "..")} && npm install onnxruntime-node@1.14.0 --save-exact
-`);
+    console.error(
+      `  cd ${require("path").join(__dirname, "..")} && npm install onnxruntime-node@1.14.0 --save-exact
+`
+    );
     process.exit(1);
   }
 } catch (e) {
-  console.error("\n[Gemini Obsidian] Error: Required native dependencies are missing.");
+  console.error(
+    "\n[Gemini Obsidian] Error: Required native dependencies are missing."
+  );
   console.error('This usually happens if "npm install" was not run or failed.');
   console.error("Please run the following command in the extension directory:");
-  console.error(`  cd ${require("path").join(__dirname, "..")} && npm install
-`);
+  console.error(
+    `  cd ${require("path").join(__dirname, "..")} && npm install
+`
+  );
   process.exit(1);
 }
 var DEFAULT_DAILY_NOTE_FORMAT = "YYYY-MM-DD";
@@ -61121,11 +61167,15 @@ var indexer = new VaultIndexer();
 var CONFIG_PATH = path5.join(os3.homedir(), ".gemini-obsidian.config.json");
 async function saveConfig(options2) {
   try {
-    await fs5.writeFile(CONFIG_PATH, JSON.stringify({
-      vault_path: options2.vaultPath,
-      workspace_path: options2.workspacePath ?? null,
-      vault_id: options2.vaultId ?? null
-    }), "utf-8");
+    await fs5.writeFile(
+      CONFIG_PATH,
+      JSON.stringify({
+        vault_path: options2.vaultPath,
+        workspace_path: options2.workspacePath ?? null,
+        vault_id: options2.vaultId ?? null
+      }),
+      "utf-8"
+    );
   } catch (e) {
     console.error("Failed to save config", e);
   }
@@ -61150,7 +61200,10 @@ async function loadConfig2() {
 function getVaultPath(providedPath) {
   const p = providedPath || VAULT_PATH;
   if (!p) {
-    throw new McpError(ErrorCode.InvalidParams, "Vault path is not set. Use obsidian_set_vault or provide 'vault_path' argument.");
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      "Vault path is not set. Use obsidian_set_vault or provide 'vault_path' argument."
+    );
   }
   return p;
 }
@@ -61181,7 +61234,10 @@ async function getDailyNoteConfig(vaultPath) {
 }
 async function getOrCreateDailyNote(vaultPath) {
   const dailyConfig = await getDailyNoteConfig(vaultPath);
-  const relativePath = path5.join(dailyConfig.folder, (0, import_moment.default)().format(dailyConfig.format) + ".md");
+  const relativePath = path5.join(
+    dailyConfig.folder,
+    (0, import_moment.default)().format(dailyConfig.format) + ".md"
+  );
   const filePath = getSafeFilePath(vaultPath, relativePath);
   let content = "";
   try {
@@ -61221,7 +61277,26 @@ async function readStdin() {
   WORKSPACE_PATH = WORKSPACE_PATH || config2.workspace_path;
   VAULT_ID = VAULT_ID || config2.vault_id;
   const args = process.argv.slice(2);
-  const knownTools = ["obsidian_list_notes", "obsidian_read_note", "obsidian_search_notes", "obsidian_rag_index", "obsidian_rag_query", "obsidian_set_vault", "obsidian_get_config", "obsidian_create_note", "obsidian_append_note", "obsidian_get_daily_note", "obsidian_get_backlinks", "obsidian_get_links", "obsidian_move_note", "obsidian_update_frontmatter", "obsidian_replace_section", "obsidian_insert_at_heading", "obsidian_replace_in_note", "obsidian_get_broken_links"];
+  const knownTools = [
+    "obsidian_list_notes",
+    "obsidian_read_note",
+    "obsidian_search_notes",
+    "obsidian_rag_index",
+    "obsidian_rag_query",
+    "obsidian_set_vault",
+    "obsidian_get_config",
+    "obsidian_create_note",
+    "obsidian_append_note",
+    "obsidian_get_daily_note",
+    "obsidian_get_backlinks",
+    "obsidian_get_links",
+    "obsidian_move_note",
+    "obsidian_update_frontmatter",
+    "obsidian_replace_section",
+    "obsidian_insert_at_heading",
+    "obsidian_replace_in_note",
+    "obsidian_get_broken_links"
+  ];
   if (args.length > 0 && knownTools.includes(args[0])) {
     const toolName = args[0];
     const toolArgs = args.slice(1);
@@ -61241,7 +61316,9 @@ async function readStdin() {
       let result;
       if (toolName === "obsidian_list_notes") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const pattern = listNotesPattern(parsedArgs.subfolder ? String(parsedArgs.subfolder) : void 0);
+        const pattern = listNotesPattern(
+          parsedArgs.subfolder ? String(parsedArgs.subfolder) : void 0
+        );
         const files = await Ze(pattern, { cwd: vp, follow: true });
         result = JSON.stringify(files.slice(0, 100), null, 2) + (files.length > 100 ? `
 ...and ${files.length - 100} more.` : "");
@@ -61294,7 +61371,9 @@ async function readStdin() {
           const input = JSON.parse(inputStr);
           vp = getVaultPath(input.tool_input?.vault_path || VAULT_PATH);
           fp = input.tool_input?.file_path;
-          wp = getWorkspacePath(input.tool_input?.workspace_path || WORKSPACE_PATH);
+          wp = getWorkspacePath(
+            input.tool_input?.workspace_path || WORKSPACE_PATH
+          );
           vid = getVaultId(input.tool_input?.vault_id || VAULT_ID);
           hpForce = input.tool_input?.force_reindex === true;
           if (!fp) {
@@ -61327,21 +61406,26 @@ Content: ${r.text}`).join("\n---\n");
       } else if (toolName === "obsidian_get_backlinks") {
         const vp = getVaultPath(parsedArgs.vault_path);
         const target = String(parsedArgs.file_name).replace(/\.md$/i, "");
-        const linkRegex = new RegExp(`\\[\\[${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([\\]\\|#])`, "i");
+        const linkRegex = new RegExp(
+          `\\[\\[${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([\\]\\|#])`,
+          "i"
+        );
         const files = await Ze("**/*.md", { cwd: vp, follow: true });
         const backlinks = [];
         const batchSize = 50;
         for (let i2 = 0; i2 < files.length; i2 += batchSize) {
           const batch = files.slice(i2, i2 + batchSize);
-          await Promise.all(batch.map(async (f) => {
-            try {
-              const content = await fs5.readFile(path5.join(vp, f), "utf-8");
-              if (linkRegex.test(content)) {
-                backlinks.push(f);
+          await Promise.all(
+            batch.map(async (f) => {
+              try {
+                const content = await fs5.readFile(path5.join(vp, f), "utf-8");
+                if (linkRegex.test(content)) {
+                  backlinks.push(f);
+                }
+              } catch (e) {
               }
-            } catch (e) {
-            }
-          }));
+            })
+          );
         }
         if (backlinks.length === 0) {
           result = `No backlinks found for "[[${target}]]".`;
@@ -61370,9 +61454,16 @@ Content: ${r.text}`).join("\n---\n");
           const updates = typeof parsedArgs.updates === "string" ? JSON.parse(parsedArgs.updates) : parsedArgs.updates;
           updateArg = { updates };
         } else {
-          updateArg = { key: String(parsedArgs.key), value: String(parsedArgs.value) };
+          updateArg = {
+            key: String(parsedArgs.key),
+            value: String(parsedArgs.value)
+          };
         }
-        await fs5.writeFile(filePath, applyFrontmatterUpdate(fileContent, updateArg), "utf-8");
+        await fs5.writeFile(
+          filePath,
+          applyFrontmatterUpdate(fileContent, updateArg),
+          "utf-8"
+        );
         result = `Updated frontmatter in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_replace_section") {
         const vp = getVaultPath(parsedArgs.vault_path);
@@ -61381,8 +61472,15 @@ Content: ${r.text}`).join("\n---\n");
         const content = String(parsedArgs.content);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const range2 = findSectionRange(fileContent, heading);
-        if (!range2) throw new Error(`Heading "${heading}" not found in ${parsedArgs.file_path}`);
-        await fs5.writeFile(filePath, replaceSection(fileContent, range2, content), "utf-8");
+        if (!range2)
+          throw new Error(
+            `Heading "${heading}" not found in ${parsedArgs.file_path}`
+          );
+        await fs5.writeFile(
+          filePath,
+          replaceSection(fileContent, range2, content),
+          "utf-8"
+        );
         result = `Replaced section "${heading}" in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_insert_at_heading") {
         const vp = getVaultPath(parsedArgs.vault_path);
@@ -61392,21 +61490,33 @@ Content: ${r.text}`).join("\n---\n");
         const position = parsedArgs.position || "end";
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const range2 = findSectionRange(fileContent, heading);
-        await fs5.writeFile(filePath, insertAtHeading(fileContent, heading, content, position, range2), "utf-8");
+        await fs5.writeFile(
+          filePath,
+          insertAtHeading(fileContent, heading, content, position, range2),
+          "utf-8"
+        );
         result = `Inserted content under "${heading}" in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_replace_in_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
         const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
         const fileContent = await fs5.readFile(filePath, "utf-8");
-        const updated = replaceInNote(fileContent, String(parsedArgs.old_text), String(parsedArgs.new_text ?? ""));
+        const updated = replaceInNote(
+          fileContent,
+          String(parsedArgs.old_text),
+          String(parsedArgs.new_text ?? "")
+        );
         await fs5.writeFile(filePath, updated, "utf-8");
         result = `Replaced text in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_get_broken_links") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const pattern = listNotesPattern(parsedArgs.subfolder ? String(parsedArgs.subfolder) : void 0);
+        const pattern = listNotesPattern(
+          parsedArgs.subfolder ? String(parsedArgs.subfolder) : void 0
+        );
         const files = await Ze(pattern, { cwd: vp, follow: true });
         const allFiles = await Ze("**/*.md", { cwd: vp, follow: true });
-        const nameSet = new Set(allFiles.map((f) => path5.basename(f, ".md").toLowerCase()));
+        const nameSet = new Set(
+          allFiles.map((f) => path5.basename(f, ".md").toLowerCase())
+        );
         const targetMap = /* @__PURE__ */ new Map();
         for (const f of files) {
           const content = await fs5.readFile(path5.join(vp, f), "utf-8").catch(() => "");
@@ -61443,11 +61553,15 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         });
         result = `Vault path set to: ${vp}`;
       } else if (toolName === "obsidian_get_config") {
-        result = JSON.stringify({
-          vault_path: VAULT_PATH,
-          workspace_path: WORKSPACE_PATH,
-          vault_id: VAULT_ID
-        }, null, 2);
+        result = JSON.stringify(
+          {
+            vault_path: VAULT_PATH,
+            workspace_path: WORKSPACE_PATH,
+            vault_id: VAULT_ID
+          },
+          null,
+          2
+        );
       } else {
         console.error(`Unknown tool: ${toolName}`);
         process.exit(1);
@@ -61465,7 +61579,7 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
   const server = new Server(
     {
       name: "gemini-obsidian",
-      version: "1.8.1"
+      version: "1.8.2"
     },
     {
       capabilities: {
@@ -61482,9 +61596,18 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              path: { type: "string", description: "Absolute path to the Obsidian vault" },
-              workspace_path: { type: "string", description: "Optional absolute path to the workspace root where .gemini-obsidian should be created." },
-              vault_id: { type: "string", description: "Optional unique identifier for this vault to share metadata across machines." }
+              path: {
+                type: "string",
+                description: "Absolute path to the Obsidian vault"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional absolute path to the workspace root where .gemini-obsidian should be created."
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for this vault to share metadata across machines."
+              }
             },
             required: ["path"]
           }
@@ -61503,8 +61626,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              subfolder: { type: "string", description: "Optional subfolder to list" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              subfolder: {
+                type: "string",
+                description: "Optional subfolder to list"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             }
           }
         },
@@ -61514,8 +61643,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: "Relative path to the note" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              file_path: {
+                type: "string",
+                description: "Relative path to the note"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path"]
           }
@@ -61526,9 +61661,18 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: 'Relative path for the new note (e.g. "Ideas/MyIdea.md")' },
-              content: { type: "string", description: "Initial content of the note" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              file_path: {
+                type: "string",
+                description: 'Relative path for the new note (e.g. "Ideas/MyIdea.md")'
+              },
+              content: {
+                type: "string",
+                description: "Initial content of the note"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path", "content"]
           }
@@ -61539,9 +61683,15 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: "Relative path to the note" },
+              file_path: {
+                type: "string",
+                description: "Relative path to the note"
+              },
               content: { type: "string", description: "Text to append" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path", "content"]
           }
@@ -61552,7 +61702,10 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              vault_path: { type: "string", description: "Optional vault path override" }
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             }
           }
         },
@@ -61563,7 +61716,10 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
             type: "object",
             properties: {
               query: { type: "string", description: "Text to search for" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["query"]
           }
@@ -61574,11 +61730,26 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              vault_path: { type: "string", description: "Optional vault path override" },
-              workspace_path: { type: "string", description: "Optional workspace path override" },
-              vault_id: { type: "string", description: "Optional unique identifier for the vault" },
-              file_path: { type: "string", description: "Relative path to a specific note to re-index" },
-              force_reindex: { type: "boolean", description: "Force full re-index, ignoring cached file hashes (default: false)" }
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
+              },
+              file_path: {
+                type: "string",
+                description: "Relative path to a specific note to re-index"
+              },
+              force_reindex: {
+                type: "boolean",
+                description: "Force full re-index, ignoring cached file hashes (default: false)"
+              }
             }
           }
         },
@@ -61588,11 +61759,26 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              query: { type: "string", description: "Question or query to ask your notes" },
-              limit: { type: "number", description: "Number of chunks to retrieve (default 5)" },
-              vault_path: { type: "string", description: "Optional vault path override" },
-              workspace_path: { type: "string", description: "Optional workspace path override" },
-              vault_id: { type: "string", description: "Optional unique identifier for the vault" }
+              query: {
+                type: "string",
+                description: "Question or query to ask your notes"
+              },
+              limit: {
+                type: "number",
+                description: "Number of chunks to retrieve (default 5)"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
+              }
             },
             required: ["query"]
           }
@@ -61603,8 +61789,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_name: { type: "string", description: "Name of the note to find backlinks for (without extension)" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              file_name: {
+                type: "string",
+                description: "Name of the note to find backlinks for (without extension)"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_name"]
           }
@@ -61615,8 +61807,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: "Relative path to the note" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              file_path: {
+                type: "string",
+                description: "Relative path to the note"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path"]
           }
@@ -61627,9 +61825,18 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              source_path: { type: "string", description: "Current relative path of the note" },
-              dest_path: { type: "string", description: 'New relative path for the note (e.g. "Archive/OldNote.md")' },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              source_path: {
+                type: "string",
+                description: "Current relative path of the note"
+              },
+              dest_path: {
+                type: "string",
+                description: 'New relative path for the note (e.g. "Archive/OldNote.md")'
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["source_path", "dest_path"]
           }
@@ -61640,11 +61847,26 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: "Relative path to the note" },
-              key: { type: "string", description: "Frontmatter key to update (single-key mode)" },
-              value: { type: "string", description: "New value for the key (JSON stringified if array/object; single-key mode)" },
-              updates: { type: "object", description: "JSON object of key/value pairs to set at once (batch mode, alternative to key+value)" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              file_path: {
+                type: "string",
+                description: "Relative path to the note"
+              },
+              key: {
+                type: "string",
+                description: "Frontmatter key to update (single-key mode)"
+              },
+              value: {
+                type: "string",
+                description: "New value for the key (JSON stringified if array/object; single-key mode)"
+              },
+              updates: {
+                type: "object",
+                description: "JSON object of key/value pairs to set at once (batch mode, alternative to key+value)"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path"]
           }
@@ -61655,10 +61877,22 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: "Relative path to the note" },
-              heading: { type: "string", description: 'Heading text to find (e.g. "Status")' },
-              content: { type: "string", description: "New section body (replaces everything between heading and next same/higher-level heading)" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              file_path: {
+                type: "string",
+                description: "Relative path to the note"
+              },
+              heading: {
+                type: "string",
+                description: 'Heading text to find (e.g. "Status")'
+              },
+              content: {
+                type: "string",
+                description: "New section body (replaces everything between heading and next same/higher-level heading)"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path", "heading", "content"]
           }
@@ -61669,11 +61903,24 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: "Relative path to the note" },
-              heading: { type: "string", description: 'Heading text to find (e.g. "Notes")' },
+              file_path: {
+                type: "string",
+                description: "Relative path to the note"
+              },
+              heading: {
+                type: "string",
+                description: 'Heading text to find (e.g. "Notes")'
+              },
               content: { type: "string", description: "Text to insert" },
-              position: { type: "string", enum: ["beginning", "end"], description: "Insert at beginning or end of section (default: end)" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              position: {
+                type: "string",
+                enum: ["beginning", "end"],
+                description: "Insert at beginning or end of section (default: end)"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path", "heading", "content"]
           }
@@ -61684,10 +61931,22 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              file_path: { type: "string", description: "Relative path to the note" },
-              old_text: { type: "string", description: "Exact text to find and replace" },
-              new_text: { type: "string", description: "Replacement text (default: empty string)" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              file_path: {
+                type: "string",
+                description: "Relative path to the note"
+              },
+              old_text: {
+                type: "string",
+                description: "Exact text to find and replace"
+              },
+              new_text: {
+                type: "string",
+                description: "Replacement text (default: empty string)"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             },
             required: ["file_path", "old_text"]
           }
@@ -61698,8 +61957,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           inputSchema: {
             type: "object",
             properties: {
-              subfolder: { type: "string", description: "Limit scan to this subfolder (optional; default: entire vault)" },
-              vault_path: { type: "string", description: "Optional vault path override" }
+              subfolder: {
+                type: "string",
+                description: "Limit scan to this subfolder (optional; default: entire vault)"
+              },
+              vault_path: {
+                type: "string",
+                description: "Optional vault path override"
+              }
             }
           }
         }
@@ -61723,21 +61988,43 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
           workspacePath: WORKSPACE_PATH,
           vaultId: VAULT_ID
         });
-        return { content: [{ type: "text", text: `Vault path set to: ${VAULT_PATH}` }] };
+        return {
+          content: [{ type: "text", text: `Vault path set to: ${VAULT_PATH}` }]
+        };
       }
       if (name2 === "obsidian_get_config") {
-        return { content: [{ type: "text", text: JSON.stringify({
-          vault_path: VAULT_PATH,
-          workspace_path: WORKSPACE_PATH,
-          vault_id: VAULT_ID
-        }, null, 2) }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  vault_path: VAULT_PATH,
+                  workspace_path: WORKSPACE_PATH,
+                  vault_id: VAULT_ID
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
       }
       if (name2 === "obsidian_list_notes") {
         const vp = getVaultPath(args2?.vault_path);
-        const pattern = listNotesPattern(args2?.subfolder ? String(args2.subfolder) : void 0);
+        const pattern = listNotesPattern(
+          args2?.subfolder ? String(args2.subfolder) : void 0
+        );
         const files = await Ze(pattern, { cwd: vp, follow: true });
-        return { content: [{ type: "text", text: JSON.stringify(files.slice(0, 100), null, 2) + (files.length > 100 ? `
-...and ${files.length - 100} more.` : "") }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(files.slice(0, 100), null, 2) + (files.length > 100 ? `
+...and ${files.length - 100} more.` : "")
+            }
+          ]
+        };
       }
       if (name2 === "obsidian_read_note") {
         const vp = getVaultPath(args2?.vault_path);
@@ -61751,14 +62038,20 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
         const content = String(args2?.content || "");
         await fs5.mkdir(path5.dirname(filePath), { recursive: true });
         await fs5.writeFile(filePath, content, "utf-8");
-        return { content: [{ type: "text", text: `Created note: ${args2?.file_path}` }] };
+        return {
+          content: [{ type: "text", text: `Created note: ${args2?.file_path}` }]
+        };
       }
       if (name2 === "obsidian_append_note") {
         const vp = getVaultPath(args2?.vault_path);
         const filePath = getSafeFilePath(vp, String(args2?.file_path));
         const content = String(args2?.content || "");
         await fs5.appendFile(filePath, "\n" + content, "utf-8");
-        return { content: [{ type: "text", text: `Appended to note: ${args2?.file_path}` }] };
+        return {
+          content: [
+            { type: "text", text: `Appended to note: ${args2?.file_path}` }
+          ]
+        };
       }
       if (name2 === "obsidian_get_daily_note") {
         const vp = getVaultPath(args2?.vault_path);
@@ -61817,33 +62110,56 @@ Content: ${r.text}
       if (name2 === "obsidian_get_backlinks") {
         const vp = getVaultPath(args2?.vault_path);
         const target = String(args2?.file_name).replace(/\.md$/i, "");
-        const linkRegex = new RegExp(`\\[\\[${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([\\]\\|#])`, "i");
+        const linkRegex = new RegExp(
+          `\\[\\[${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([\\]\\|#])`,
+          "i"
+        );
         const files = await Ze("**/*.md", { cwd: vp, follow: true });
         const backlinks = [];
         const batchSize = 50;
         for (let i2 = 0; i2 < files.length; i2 += batchSize) {
           const batch = files.slice(i2, i2 + batchSize);
-          await Promise.all(batch.map(async (f) => {
-            try {
-              const content = await fs5.readFile(path5.join(vp, f), "utf-8");
-              if (linkRegex.test(content)) {
-                backlinks.push(f);
+          await Promise.all(
+            batch.map(async (f) => {
+              try {
+                const content = await fs5.readFile(path5.join(vp, f), "utf-8");
+                if (linkRegex.test(content)) {
+                  backlinks.push(f);
+                }
+              } catch (e) {
               }
-            } catch (e) {
-            }
-          }));
+            })
+          );
         }
         if (backlinks.length === 0) {
-          return { content: [{ type: "text", text: `No backlinks found for "[[${target}]]".` }] };
+          return {
+            content: [
+              { type: "text", text: `No backlinks found for "[[${target}]]".` }
+            ]
+          };
         }
-        return { content: [{ type: "text", text: `Found ${backlinks.length} backlinks for "[[${target}]]":
-` + backlinks.map((f) => `- ${f}`).join("\n") }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Found ${backlinks.length} backlinks for "[[${target}]]":
+` + backlinks.map((f) => `- ${f}`).join("\n")
+            }
+          ]
+        };
       }
       if (name2 === "obsidian_get_links") {
         const vp = getVaultPath(args2?.vault_path);
         const filePath = getSafeFilePath(vp, String(args2?.file_path));
         const content = await fs5.readFile(filePath, "utf-8");
-        return { content: [{ type: "text", text: JSON.stringify(extractWikilinks(content), null, 2) }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(extractWikilinks(content), null, 2)
+            }
+          ]
+        };
       }
       if (name2 === "obsidian_move_note") {
         const vp = getVaultPath(args2?.vault_path);
@@ -61851,15 +62167,30 @@ Content: ${r.text}
         const dest = getSafeFilePath(vp, String(args2?.dest_path));
         await fs5.mkdir(path5.dirname(dest), { recursive: true });
         await fs5.rename(source, dest);
-        return { content: [{ type: "text", text: `Moved ${args2?.source_path} to ${args2?.dest_path}` }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Moved ${args2?.source_path} to ${args2?.dest_path}`
+            }
+          ]
+        };
       }
       if (name2 === "obsidian_update_frontmatter") {
         const vp = getVaultPath(args2?.vault_path);
         const filePath = getSafeFilePath(vp, String(args2?.file_path));
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const updateArg = args2?.updates && typeof args2.updates === "object" ? { updates: args2.updates } : { key: String(args2?.key), value: String(args2?.value) };
-        await fs5.writeFile(filePath, applyFrontmatterUpdate(fileContent, updateArg), "utf-8");
-        return { content: [{ type: "text", text: `Updated frontmatter in ${args2?.file_path}` }] };
+        await fs5.writeFile(
+          filePath,
+          applyFrontmatterUpdate(fileContent, updateArg),
+          "utf-8"
+        );
+        return {
+          content: [
+            { type: "text", text: `Updated frontmatter in ${args2?.file_path}` }
+          ]
+        };
       }
       if (name2 === "obsidian_replace_section") {
         const vp = getVaultPath(args2?.vault_path);
@@ -61868,9 +62199,24 @@ Content: ${r.text}
         const content = String(args2?.content);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const range2 = findSectionRange(fileContent, heading);
-        if (!range2) throw new McpError(ErrorCode.InvalidParams, `Heading "${heading}" not found in ${args2?.file_path}`);
-        await fs5.writeFile(filePath, replaceSection(fileContent, range2, content), "utf-8");
-        return { content: [{ type: "text", text: `Replaced section "${heading}" in ${args2?.file_path}` }] };
+        if (!range2)
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Heading "${heading}" not found in ${args2?.file_path}`
+          );
+        await fs5.writeFile(
+          filePath,
+          replaceSection(fileContent, range2, content),
+          "utf-8"
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Replaced section "${heading}" in ${args2?.file_path}`
+            }
+          ]
+        };
       }
       if (name2 === "obsidian_insert_at_heading") {
         const vp = getVaultPath(args2?.vault_path);
@@ -61880,23 +62226,46 @@ Content: ${r.text}
         const position = args2?.position || "end";
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const range2 = findSectionRange(fileContent, heading);
-        await fs5.writeFile(filePath, insertAtHeading(fileContent, heading, content, position, range2), "utf-8");
-        return { content: [{ type: "text", text: `Inserted content under "${heading}" in ${args2?.file_path}` }] };
+        await fs5.writeFile(
+          filePath,
+          insertAtHeading(fileContent, heading, content, position, range2),
+          "utf-8"
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Inserted content under "${heading}" in ${args2?.file_path}`
+            }
+          ]
+        };
       }
       if (name2 === "obsidian_replace_in_note") {
         const vp = getVaultPath(args2?.vault_path);
         const filePath = getSafeFilePath(vp, String(args2?.file_path));
         const fileContent = await fs5.readFile(filePath, "utf-8");
-        const updated = replaceInNote(fileContent, String(args2?.old_text), String(args2?.new_text ?? ""));
+        const updated = replaceInNote(
+          fileContent,
+          String(args2?.old_text),
+          String(args2?.new_text ?? "")
+        );
         await fs5.writeFile(filePath, updated, "utf-8");
-        return { content: [{ type: "text", text: `Replaced text in ${args2?.file_path}` }] };
+        return {
+          content: [
+            { type: "text", text: `Replaced text in ${args2?.file_path}` }
+          ]
+        };
       }
       if (name2 === "obsidian_get_broken_links") {
         const vp = getVaultPath(args2?.vault_path);
-        const pattern = listNotesPattern(args2?.subfolder ? String(args2.subfolder) : void 0);
+        const pattern = listNotesPattern(
+          args2?.subfolder ? String(args2.subfolder) : void 0
+        );
         const files = await Ze(pattern, { cwd: vp, follow: true });
         const allFiles = await Ze("**/*.md", { cwd: vp, follow: true });
-        const nameSet = new Set(allFiles.map((f) => path5.basename(f, ".md").toLowerCase()));
+        const nameSet = new Set(
+          allFiles.map((f) => path5.basename(f, ".md").toLowerCase())
+        );
         const targetMap = /* @__PURE__ */ new Map();
         for (const f of files) {
           const content = await fs5.readFile(path5.join(vp, f), "utf-8").catch(() => "");
@@ -61915,11 +62284,20 @@ Content: ${r.text}
           }
         }
         if (broken.length === 0) {
-          return { content: [{ type: "text", text: "No broken links found." }] };
+          return {
+            content: [{ type: "text", text: "No broken links found." }]
+          };
         }
         const lines = broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}`).join("\n");
-        return { content: [{ type: "text", text: `Found ${broken.length} broken link(s):
-${lines}` }] };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Found ${broken.length} broken link(s):
+${lines}`
+            }
+          ]
+        };
       }
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name2}`);
     } catch (error2) {
