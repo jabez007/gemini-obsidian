@@ -161,4 +161,43 @@ describe('VaultIndexer path resolution and storage', () => {
     const ftsIndex = indices.find((idx: any) => idx.indexType === 'FTS' && idx.columns.includes('text'));
     expect(ftsIndex).toBeDefined();
   });
+
+  it('falls back to vectorSearch if fullTextSearch fails', async () => {
+    await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a test note to trigger indexing with enough characters to pass the minimum filter.', 'utf-8');
+    await indexer.indexVault(vaultPath, false, workspacePath);
+
+    const mockSearchBuilder = {
+      fullTextSearch: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      toArray: vi.fn().mockRejectedValue(new Error('Simulated FTS failure'))
+    };
+
+    const mockVectorBuilder = {
+      limit: vi.fn().mockReturnThis(),
+      toArray: vi.fn().mockResolvedValue([{ path: 'fallback-note.md', text: 'vector fallback result' }])
+    };
+
+    let tableSearchSpy: any;
+    let vectorSearchSpy: any;
+
+    // Intercept getTable to spy on the dynamically instantiated table object
+    const realGetTable = (indexer as any).getTable.bind(indexer);
+    vi.spyOn(indexer as any, 'getTable').mockImplementation(async (...args: any[]) => {
+      const realTable = await realGetTable(...args);
+      if (realTable) {
+        tableSearchSpy = vi.spyOn(realTable, 'search').mockReturnValue(mockSearchBuilder as any);
+        vectorSearchSpy = vi.spyOn(realTable, 'vectorSearch').mockReturnValue(mockVectorBuilder as any);
+      }
+      return realTable;
+    });
+
+    // Call the public search method
+    const results = await indexer.search('test query', vaultPath, 5, workspacePath);
+
+    // Assert that the hybrid search was attempted but failed, and fallback was used
+    expect(tableSearchSpy).toHaveBeenCalled();
+    expect(mockSearchBuilder.fullTextSearch).toHaveBeenCalledWith('test query');
+    expect(vectorSearchSpy).toHaveBeenCalled();
+    expect(results).toEqual([{ path: 'fallback-note.md', text: 'vector fallback result' }]);
+  });
 });
