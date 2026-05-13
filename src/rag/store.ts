@@ -214,6 +214,7 @@ export class VaultIndexer {
           let table: lancedb.Table;
           if (!tableNames.includes('notes')) {
               table = await db.createTable('notes', chunkRows);
+              try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
           } else {
               table = await db.openTable('notes');
               const schema = await table.schema();
@@ -223,7 +224,9 @@ export class VaultIndexer {
                   console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
                   await db.dropTable('notes');
                   table = await db.createTable('notes', chunkRows);
+                  try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
               } else {
+                  try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
                   // Delete old chunks for this file
                   await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
                   await table.add(chunkRows);
@@ -469,11 +472,14 @@ export class VaultIndexer {
                 console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
                 await db.dropTable('notes');
                 table = await db.createTable('notes', chunkRows);
+                try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
               } else {
+                try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
                 await table.add(chunkRows);
               }
             } catch (e) {
               table = await db.createTable('notes', chunkRows);
+              try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
             }
             tableInitialized = true;
           } else {
@@ -557,11 +563,19 @@ export class VaultIndexer {
       const embedder = Embedder.getInstance();
       const vector = await embedder.embed(query);
 
-      const results = await table.vectorSearch(vector)
-          .limit(limit)
-          .toArray();
-
-      return results;
+      try {
+        const results = await table.search(vector)
+            .fullTextSearch(query)
+            .limit(limit)
+            .toArray();
+        return results;
+      } catch (err) {
+        console.error("FTS Hybrid Search failed, falling back to vector search. Consider running a full re-index.", err);
+        const results = await table.vectorSearch(vector)
+            .limit(limit)
+            .toArray();
+        return results;
+      }
     } finally {
       release();
     }

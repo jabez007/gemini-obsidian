@@ -4,7 +4,7 @@ This is a powerful [Gemini CLI](https://github.com/google/gemini-cli) extension 
 
 ## Features
 
-- **🧠 Semantic Search (RAG)**: Ask natural language questions about your notes. The extension indexes your vault using embeddings (via LanceDB) to find relevant context.
+- **🧠 Hybrid Search (RAG + FTS)**: Ask natural language questions about your notes. The extension indexes your vault using embeddings (via LanceDB) and native Full-Text Search (FTS / BM25) to find highly relevant context by combining semantic meaning with precise keyword matching.
 - **🕸️ Graph Traversal**: Navigate your knowledge graph. Find backlinks (`[[linked from]]`) and outgoing links to surf your ideas.
 - **🛠️ Link Repair**: Audit broken wikilinks and make surgical in-note replacements without rewriting whole files.
 - **📝 Smart Journaling**: Fetch today's daily note or append logs to specific headings (e.g., `## Work Log`) with timestamps.

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.2] - 2026-05-12
+
+### Features
+
+- feat(rag): implement hybrid search with LanceDB native FTS
+- feat(rag): gracefully fallback to pure semantic search if FTS index is missing
+
+### Testing
+
+- test(rag): add regression tests for hybrid search fallback
+
 ## [1.8.0] - 2026-04-13
 
 ### Features

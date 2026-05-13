@@ -144,4 +144,66 @@ describe('VaultIndexer path resolution and storage', () => {
     expect(searchResults[0].path).toBe('test-note.md');
     expect(searchResults[0].text).toContain('cats');
   });
+
+  it('creates an FTS index on the text column during indexing', async () => {
+    await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a sufficiently long note to pass the minimum chunk size filter of forty characters.', 'utf-8');
+    
+    await indexer.indexVault(vaultPath, false, workspacePath);
+    
+    const lancedb = await import('@lancedb/lancedb');
+    const vaultHash = md5(path.resolve(vaultPath));
+    const dbPath = path.join(workspacePath, '.gemini-obsidian', 'vaults', vaultHash, 'lancedb');
+    
+    const db = await lancedb.connect(dbPath);
+    try {
+      const table = await db.openTable('notes');
+      const indices = await table.listIndices();
+      
+      const ftsIndex = indices.find((idx: any) => idx.indexType === 'FTS' && idx.columns.includes('text'));
+      expect(ftsIndex).toBeDefined();
+    } finally {
+      if (typeof db.close === 'function') {
+        db.close();
+      }
+    }
+  });
+
+  it('falls back to vectorSearch if fullTextSearch fails', async () => {
+    await fs.writeFile(path.join(vaultPath, 'note.md'), 'This is a test note to trigger indexing with enough characters to pass the minimum filter.', 'utf-8');
+    await indexer.indexVault(vaultPath, false, workspacePath);
+
+    const simulatedError = new Error('Simulated FTS failure');
+
+    const mockSearchBuilder = {
+      fullTextSearch: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      toArray: vi.fn().mockRejectedValue(simulatedError)
+    };
+
+    const mockVectorBuilder = {
+      limit: vi.fn().mockReturnThis(),
+      toArray: vi.fn().mockResolvedValue([{ path: 'fallback-note.md', text: 'vector fallback result' }])
+    };
+
+    const fakeTable = {
+      search: vi.fn().mockReturnValue(mockSearchBuilder),
+      vectorSearch: vi.fn().mockReturnValue(mockVectorBuilder)
+    };
+
+    // Inject the fake table at the public level of indexer by stubbing getTable
+    vi.spyOn(indexer as any, 'getTable').mockResolvedValue(fakeTable);
+
+    // Spy on the logger to assert the error-handling path runs
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Call the public search method
+    const results = await indexer.search('test query', vaultPath, 5, workspacePath);
+
+    // Assert that the hybrid search was attempted but failed, and fallback was used
+    expect(fakeTable.search).toHaveBeenCalled();
+    expect(mockSearchBuilder.fullTextSearch).toHaveBeenCalledWith('test query');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('FTS Hybrid Search failed'), simulatedError);
+    expect(fakeTable.vectorSearch).toHaveBeenCalled();
+    expect(results).toEqual([{ path: 'fallback-note.md', text: 'vector fallback result' }]);
+  });
 });
