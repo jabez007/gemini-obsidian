@@ -60642,10 +60642,20 @@ function applyFrontmatterUpdate(fileContent, update) {
 }
 
 // src/rag/store.ts
+function getFirstNumericEnv(keys, fallback) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return fallback;
+}
 function chunkingOptionsFromEnv() {
-  const minRaw = Number(process.env.GEMINI_OBSIDIAN_MIN_CHUNK_CHARS ?? "40");
-  const maxRaw = Number(process.env.GEMINI_OBSIDIAN_MAX_CHUNK_CHARS ?? "1800");
-  const targetRaw = Number(process.env.GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS ?? "700");
+  const minRaw = getFirstNumericEnv(["OBSIDIAN_MIN_CHUNK_CHARS", "CODEX_OBSIDIAN_MIN_CHUNK_CHARS", "GEMINI_OBSIDIAN_MIN_CHUNK_CHARS"], 40);
+  const maxRaw = getFirstNumericEnv(["OBSIDIAN_MAX_CHUNK_CHARS", "CODEX_OBSIDIAN_MAX_CHUNK_CHARS", "GEMINI_OBSIDIAN_MAX_CHUNK_CHARS"], 1800);
+  const targetRaw = getFirstNumericEnv(["OBSIDIAN_TARGET_CHUNK_CHARS", "CODEX_OBSIDIAN_TARGET_CHUNK_CHARS", "GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS"], 700);
   const min2 = Number.isFinite(minRaw) && minRaw > 0 ? Math.floor(minRaw) : 40;
   const max2 = Number.isFinite(maxRaw) && maxRaw > 0 ? Math.floor(maxRaw) : 1800;
   const target = Number.isFinite(targetRaw) && targetRaw > min2 ? Math.floor(targetRaw) : 700;
@@ -60867,7 +60877,7 @@ var VaultIndexer = class {
       const tableExists = tableNames.includes("notes");
       const hasPreviousHashes = Object.keys(previousHashes).length > 0;
       const canIncremental = tableExists && hasPreviousHashes && !force;
-      const batchSizeRaw = Number(process.env.GEMINI_OBSIDIAN_EMBED_BATCH_SIZE ?? "48");
+      const batchSizeRaw = getFirstNumericEnv(["OBSIDIAN_EMBED_BATCH_SIZE", "CODEX_OBSIDIAN_EMBED_BATCH_SIZE", "GEMINI_OBSIDIAN_EMBED_BATCH_SIZE"], 48);
       const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.min(Math.floor(batchSizeRaw), 256) : 48;
       const useProgressBar = process.stderr.isTTY === true;
       const progressInterval = 100;
@@ -61134,7 +61144,7 @@ try {
   const isCompatibleOrt = typeof ortVersion === "string" && /^1\.14(\.|$)/.test(ortVersion);
   if (!isCompatibleOrt) {
     console.error(
-      "\n[Gemini Obsidian] Error: Incompatible onnxruntime-node version detected."
+      "\n[Obsidian MCP] Error: Incompatible onnxruntime-node version detected."
     );
     console.error(`Installed: ${ortVersion ?? "unknown"}, required: 1.14.x`);
     console.error(
@@ -61149,10 +61159,12 @@ try {
   }
 } catch (e) {
   console.error(
-    "\n[Gemini Obsidian] Error: Required native dependencies are missing."
+    "\n[Obsidian MCP] Error: Required native dependencies are missing."
   );
   console.error('This usually happens if "npm install" was not run or failed.');
-  console.error("Please run the following command in the extension directory:");
+  console.error(
+    "Please run the following command in the project/plugin directory:"
+  );
   console.error(
     `  cd ${require("path").join(__dirname, "..")} && npm install
 `
@@ -61160,42 +61172,70 @@ try {
   process.exit(1);
 }
 var DEFAULT_DAILY_NOTE_FORMAT = "YYYY-MM-DD";
-var VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || null;
-var WORKSPACE_PATH = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
-var VAULT_ID = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
+function getFirstEnv(...keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+var VAULT_PATH = getFirstEnv(
+  "OBSIDIAN_VAULT_PATH",
+  "CODEX_OBSIDIAN_VAULT_PATH",
+  "GEMINI_OBSIDIAN_VAULT_PATH"
+);
+var WORKSPACE_PATH = getFirstEnv(
+  "OBSIDIAN_WORKSPACE_PATH",
+  "CODEX_OBSIDIAN_WORKSPACE_PATH",
+  "GEMINI_OBSIDIAN_WORKSPACE_PATH"
+);
+var VAULT_ID = getFirstEnv(
+  "OBSIDIAN_VAULT_ID",
+  "CODEX_OBSIDIAN_VAULT_ID",
+  "GEMINI_OBSIDIAN_VAULT_ID"
+);
 var indexer = new VaultIndexer();
-var CONFIG_PATH = path5.join(os3.homedir(), ".gemini-obsidian.config.json");
+var CONFIG_PATHS = [
+  path5.join(os3.homedir(), ".obsidian-mcp.config.json"),
+  path5.join(os3.homedir(), ".gemini-obsidian.config.json")
+];
 async function saveConfig(options2) {
   try {
-    await fs5.writeFile(
-      CONFIG_PATH,
-      JSON.stringify({
-        vault_path: options2.vaultPath,
-        workspace_path: options2.workspacePath ?? null,
-        vault_id: options2.vaultId ?? null
-      }),
-      "utf-8"
+    const serialized = JSON.stringify({
+      vault_path: options2.vaultPath,
+      workspace_path: options2.workspacePath ?? null,
+      vault_id: options2.vaultId ?? null
+    });
+    await Promise.all(
+      CONFIG_PATHS.map(
+        (configPath) => fs5.writeFile(configPath, serialized, "utf-8")
+      )
     );
   } catch (e) {
     console.error("Failed to save config", e);
   }
 }
 async function loadConfig2() {
-  try {
-    const data = await fs5.readFile(CONFIG_PATH, "utf-8");
-    const config2 = JSON.parse(data);
-    return {
-      vault_path: config2.vault_path || null,
-      workspace_path: config2.workspace_path || null,
-      vault_id: config2.vault_id || null
-    };
-  } catch {
-    return {
-      vault_path: null,
-      workspace_path: null,
-      vault_id: null
-    };
+  for (const configPath of CONFIG_PATHS) {
+    try {
+      const data = await fs5.readFile(configPath, "utf-8");
+      const config2 = JSON.parse(data);
+      return {
+        vault_path: config2.vault_path || null,
+        workspace_path: config2.workspace_path || null,
+        vault_id: config2.vault_id || null
+      };
+    } catch {
+      continue;
+    }
   }
+  return {
+    vault_path: null,
+    workspace_path: null,
+    vault_id: null
+  };
 }
 function getVaultPath(providedPath) {
   const p = providedPath || VAULT_PATH;
@@ -61579,7 +61619,7 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
   const server = new Server(
     {
       name: "gemini-obsidian",
-      version: "1.8.2"
+      version: "2.0.0"
     },
     {
       capabilities: {

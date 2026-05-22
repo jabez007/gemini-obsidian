@@ -1,10 +1,10 @@
-# Gemini Obsidian Extension
+# Gemini Obsidian MCP
 
-This is a powerful [Gemini CLI](https://github.com/google/gemini-cli) extension that integrates your **Obsidian Vault** directly into your AI workflow. It transforms Gemini into a "Second Brain" assistant capable of reading, searching, connecting, and managing your notes.
+This project integrates your **Obsidian Vault** into both **Codex** and the legacy **Gemini CLI** extension system. It exposes the same local MCP server in both hosts so you can read, search, connect, and maintain notes from either workflow.
 
 ## Features
 
-- **🧠 Hybrid Search (RAG + FTS)**: Ask natural language questions about your notes. The extension indexes your vault using embeddings (via LanceDB) and native Full-Text Search (FTS / BM25) to find highly relevant context by combining semantic meaning with precise keyword matching.
+- **🧠 Hybrid Search (RAG + FTS)**: Ask natural language questions about your notes. The server indexes your vault using embeddings (via LanceDB) and native Full-Text Search (FTS / BM25) to find highly relevant context by combining semantic meaning with precise keyword matching.
 - **🕸️ Graph Traversal**: Navigate your knowledge graph. Find backlinks (`[[linked from]]`) and outgoing links to surf your ideas.
 - **🛠️ Link Repair**: Audit broken wikilinks and make surgical in-note replacements without rewriting whole files.
 - **📝 Smart Journaling**: Fetch today's daily note or append logs to specific headings (e.g., `## Work Log`) with timestamps.
@@ -18,97 +18,95 @@ This is a powerful [Gemini CLI](https://github.com/google/gemini-cli) extension 
 ## Prerequisites
 
 - **Node.js**: v18 or higher.
-- **Gemini CLI**: The host application for this extension.
+- **Codex CLI** or **Gemini CLI**.
 - **Obsidian Vault**: A local folder containing your markdown notes.
 
 ## Installation
 
-1. **Install via Gemini CLI**:
-   ```sh
-   gemini extensions install https://github.com/thoreinstein/gemini-obsidian
-   ```
+### Codex plugin
 
-2. **Install Native Dependencies**:
-   This extension requires native binaries for semantic search. You **must** run `npm install` inside the extension directory:
-   ```sh
-   cd ~/.gemini/extensions/gemini-obsidian && npm install
-   ```
+This repo now includes a Codex plugin manifest at `.codex-plugin/plugin.json` and an MCP launcher at `.mcp.json`. Install it as a local plugin from this repo, then make sure dependencies are installed:
+
+```sh
+npm install
+npm run build
+```
+
+### Gemini CLI extension
+
+Gemini compatibility remains in place through `gemini-extension.json`:
+
+```sh
+gemini extensions install https://github.com/thoreinstein/gemini-obsidian
+cd ~/.gemini/extensions/gemini-obsidian && npm install && npm run build
+```
 
 ## Configuration
 
-The extension needs to know where your Obsidian vault is located.
+The server needs to know where your Obsidian vault is located.
 
-**Option 1: Environment Variables**
+### Option 1: Environment variables
+
 Set these in your shell profile:
+
 ```bash
 export OBSIDIAN_VAULT_PATH="/Users/you/Documents/MyVault"
-# Optional: Set a dedicated workspace for .gemini-obsidian metadata
-export GEMINI_OBSIDIAN_WORKSPACE_PATH="/Users/you/Documents/MyProject"
-# Optional: Set a unique vault ID to share metadata across machines (e.g. if synced via Git)
-export GEMINI_OBSIDIAN_VAULT_ID="my-personal-knowledge-base"
+# Optional: neutral, Codex, and legacy Gemini names are all accepted
+export OBSIDIAN_WORKSPACE_PATH="/Users/you/Documents/MyProject"
+export OBSIDIAN_VAULT_ID="my-personal-knowledge-base"
 ```
 
-**Option 2: Runtime Configuration**
-The first time you use a tool, gemini will ask to set `vault_path`. It will be cached in `~/.gemini-obsidian.config.json`. You can also set a `workspace_path` to store indexing data in a custom location (e.g., a project root), or a `vault_id` to override the default path-based hashing.
+Also supported for backward compatibility: `CODEX_OBSIDIAN_*` and `GEMINI_OBSIDIAN_*`.
+
+### Option 2: Runtime configuration
+
+The first time you use a tool, the server can persist `vault_path`, `workspace_path`, and `vault_id`. It now reads the neutral config path `~/.obsidian-mcp.config.json` and still falls back to the legacy Gemini path `~/.gemini-obsidian.config.json`.
 
 ## Data Storage & Troubleshooting
 
-- **Vector Index & Hashes**: 
-  - The extension calculates a **Vault Identifier** to isolate metadata for different vaults. 
+- **Vector Index & Hashes**:
+  - The server calculates a **Vault Identifier** to isolate metadata for different vaults.
   - By default, this is an **MD5 hash of the absolute vault path**.
   - If a **`vault_id`** is provided (via env var or config), it is used directly instead of the path hash. This is recommended if you sync your vault across machines where absolute paths might differ.
   - Storage location:
     - If a **workspace path** is configured, metadata is stored in `<workspace_path>/.gemini-obsidian/vaults/<vault_identifier>/`.
     - Otherwise, it defaults to a **Hashed Global Cache** in `~/.gemini-obsidian/vaults/<vault_identifier>/`.
-- **Cache Reset**: If you suspect the index is corrupted or want a fresh start, you can manually delete the vault-specific folder (`.gemini-obsidian/vaults/<vault_identifier>`) in your workspace or the corresponding entry in the global cache. The next time you run `/obsidian:index` or `obsidian_rag_index`, it will be recreated.
-- **Module Not Found Error**: If you see an error like `Cannot find module '@lancedb/lancedb'`, it means the native dependencies were not installed. Run `npm install` in the extension directory as shown in the Installation section.
-- **Logs**: If you encounter issues, check the extension logs. Since this runs as an MCP server, errors are typically output to stderr.
+- **Cache Reset**: If you suspect the index is corrupted or want a fresh start, you can manually delete the vault-specific folder (`.gemini-obsidian/vaults/<vault_identifier>`) in your workspace or the corresponding entry in the global cache. The next time you run `obsidian_rag_index`, it will be recreated.
+- **Module Not Found Error**: If you see an error like `Cannot find module '@lancedb/lancedb'`, run `npm install` in the repo or installed extension/plugin directory.
+- **Logs**: Since this runs as an MCP server, errors are typically output to stderr.
 
 ## Indexing Performance Tuning
 
 > [!WARNING]
 > Initial semantic indexing can be time- and resource-intensive, especially on large vaults.
-> For first-time indexing on larger vaults, prefer running indexing directly from the extension directory (outside an active Gemini chat session):
+> For first-time indexing on larger vaults, prefer running indexing directly from the project directory:
 > `node dist/index.js obsidian_rag_index`
 
-### Initial Indexing Expectations
+For large vaults, you can tune indexing throughput and chunk size with environment variables. Neutral names are preferred, but the Gemini-prefixed names still work:
 
-- Recommended threshold for one-time CLI indexing: vaults with roughly `500+` markdown files.
-- CPU usage can stay high for the full indexing run (multiple cores active).
-- In a real-world test with `~1000` files (`957` notes), indexing produced `13,296` chunks and took about `11 minutes` (`11:01`, ~`374%` CPU).
-
-For large vaults, you can tune indexing throughput and chunk size with environment variables:
-
-- `GEMINI_OBSIDIAN_EMBED_BATCH_SIZE` (default: `48`): Number of chunks embedded per batch.
-- `GEMINI_OBSIDIAN_MIN_CHUNK_CHARS` (default: `40`): Skip very small chunks below this size.
-- `GEMINI_OBSIDIAN_MAX_CHUNK_CHARS` (default: `1800`): Split oversized paragraphs into smaller embedding-safe segments.
-- `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS` (default: `700`): Merge nearby short segments into larger chunks to reduce total embeddings.
-
-Higher `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS` generally improves indexing speed by reducing chunk count, but can reduce retrieval granularity.
+- `OBSIDIAN_EMBED_BATCH_SIZE` or `GEMINI_OBSIDIAN_EMBED_BATCH_SIZE` (default: `48`)
+- `OBSIDIAN_MIN_CHUNK_CHARS` or `GEMINI_OBSIDIAN_MIN_CHUNK_CHARS` (default: `40`)
+- `OBSIDIAN_MAX_CHUNK_CHARS` or `GEMINI_OBSIDIAN_MAX_CHUNK_CHARS` (default: `1800`)
+- `OBSIDIAN_TARGET_CHUNK_CHARS` or `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS` (default: `700`)
 
 Example preset for very large vaults:
 
 ```bash
-GEMINI_OBSIDIAN_EMBED_BATCH_SIZE=48 \
-GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS=900 \
-GEMINI_OBSIDIAN_MIN_CHUNK_CHARS=60 \
+OBSIDIAN_EMBED_BATCH_SIZE=48 \
+OBSIDIAN_TARGET_CHUNK_CHARS=900 \
+OBSIDIAN_MIN_CHUNK_CHARS=60 \
 node dist/index.js obsidian_rag_index
 ```
 
-## Commands
+## Host-specific assets
 
-The extension comes with pre-configured slash commands for common workflows:
-
-| Command | Description |
-| :--- | :--- |
-| `/obsidian:daily` | Retrieve today's daily note, summarize tasks, and ask for updates. |
-| `/obsidian:ask` | Ask a question to your vault using RAG (e.g., `/obsidian:ask "What did I learn about React?"`). |
-| `/obsidian:search` | Fuzzy search for files by name or content. |
-| `/obsidian:index` | Trigger a manual re-index of the vault for semantic search. |
+- **Codex** uses `.codex-plugin/plugin.json`, `.mcp.json`, and the repo `skills/` directory.
+- **Gemini CLI** continues to use `gemini-extension.json`, `commands/`, and `hooks/hooks.json`.
+- **Compatibility note**: the Gemini slash commands and lifecycle hooks remain Gemini-specific. Codex support is provided through MCP tools plus the shared skills.
 
 ## Available Tools
 
-The following tools are exposed to the Gemini agent:
+The following tools are exposed through the MCP server for either host:
 
 ### Retrieval & Search
 - `obsidian_rag_index`: Index the vault for semantic search.
@@ -154,4 +152,4 @@ npm test
 
 ## License
 
-ISC
+MIT

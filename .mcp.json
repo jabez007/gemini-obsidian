@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "gemini-obsidian": {
+      "command": "node",
+      "args": [
+        "./dist/index.js"
+      ]
+    }
+  }
+}

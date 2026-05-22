@@ -1,7 +1,7 @@
 {
   "name": "gemini-obsidian",
-  "version": "1.8.2",
-  "description": "Obsidian Vault integration with local RAG capabilities",
+  "version": "2.0.0",
+  "description": "Obsidian Vault integration with local RAG capabilities for Gemini CLI and Codex",
   "main": "index.js",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --format=cjs --external:@lancedb/lancedb --external:onnxruntime-node --external:sharp --banner:js=\"var import_meta = { url: 'file://' + __filename };\" --define:import.meta=import_meta",
@@ -10,6 +10,8 @@
     "test": "vitest run"
   },
   "keywords": [
+    "codex",
+    "plugin",
     "gemini-cli",
     "extension",
     "obsidian",

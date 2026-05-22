@@ -9,7 +9,7 @@ try {
         typeof ortVersion === "string" && /^1\.14(\.|$)/.test(ortVersion);
     if (!isCompatibleOrt) {
         console.error(
-            "\n[Gemini Obsidian] Error: Incompatible onnxruntime-node version detected.",
+            "\n[Obsidian MCP] Error: Incompatible onnxruntime-node version detected.",
         );
         console.error(`Installed: ${ortVersion ?? "unknown"}, required: 1.14.x`);
         console.error(
@@ -23,10 +23,12 @@ try {
     }
 } catch (e) {
     console.error(
-        "\n[Gemini Obsidian] Error: Required native dependencies are missing.",
+        "\n[Obsidian MCP] Error: Required native dependencies are missing.",
     );
     console.error('This usually happens if "npm install" was not run or failed.');
-    console.error("Please run the following command in the extension directory:");
+    console.error(
+        "Please run the following command in the project/plugin directory:",
+    );
     console.error(
         `  cd ${require("path").join(__dirname, "..")} && npm install\n`,
     );
@@ -68,24 +70,49 @@ interface SaveConfigOptions {
 
 const DEFAULT_DAILY_NOTE_FORMAT = "YYYY-MM-DD";
 
-let VAULT_PATH: string | null = process.env.OBSIDIAN_VAULT_PATH || null;
-let WORKSPACE_PATH: string | null =
-    process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
-let VAULT_ID: string | null = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
+function getFirstEnv(...keys: string[]): string | null {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (typeof value === "string" && value.length > 0) {
+            return value;
+        }
+    }
+    return null;
+}
+
+let VAULT_PATH: string | null = getFirstEnv(
+    "OBSIDIAN_VAULT_PATH",
+    "CODEX_OBSIDIAN_VAULT_PATH",
+    "GEMINI_OBSIDIAN_VAULT_PATH",
+);
+let WORKSPACE_PATH: string | null = getFirstEnv(
+    "OBSIDIAN_WORKSPACE_PATH",
+    "CODEX_OBSIDIAN_WORKSPACE_PATH",
+    "GEMINI_OBSIDIAN_WORKSPACE_PATH",
+);
+let VAULT_ID: string | null = getFirstEnv(
+    "OBSIDIAN_VAULT_ID",
+    "CODEX_OBSIDIAN_VAULT_ID",
+    "GEMINI_OBSIDIAN_VAULT_ID",
+);
 
 const indexer = new VaultIndexer();
-const CONFIG_PATH = path.join(os.homedir(), ".gemini-obsidian.config.json");
+const CONFIG_PATHS = [
+    path.join(os.homedir(), ".obsidian-mcp.config.json"),
+    path.join(os.homedir(), ".gemini-obsidian.config.json"),
+];
 
 async function saveConfig(options: SaveConfigOptions) {
     try {
-        await fs.writeFile(
-            CONFIG_PATH,
-            JSON.stringify({
-                vault_path: options.vaultPath,
-                workspace_path: options.workspacePath ?? null,
-                vault_id: options.vaultId ?? null,
-            }),
-            "utf-8",
+        const serialized = JSON.stringify({
+            vault_path: options.vaultPath,
+            workspace_path: options.workspacePath ?? null,
+            vault_id: options.vaultId ?? null,
+        });
+        await Promise.all(
+            CONFIG_PATHS.map((configPath) =>
+                fs.writeFile(configPath, serialized, "utf-8"),
+            ),
         );
     } catch (e) {
         console.error("Failed to save config", e);
@@ -97,21 +124,24 @@ async function loadConfig(): Promise<{
     workspace_path: string | null;
     vault_id: string | null;
 }> {
-    try {
-        const data = await fs.readFile(CONFIG_PATH, "utf-8");
-        const config = JSON.parse(data);
-        return {
-            vault_path: config.vault_path || null,
-            workspace_path: config.workspace_path || null,
-            vault_id: config.vault_id || null,
-        };
-    } catch {
-        return {
-            vault_path: null,
-            workspace_path: null,
-            vault_id: null,
-        };
+    for (const configPath of CONFIG_PATHS) {
+        try {
+            const data = await fs.readFile(configPath, "utf-8");
+            const config = JSON.parse(data);
+            return {
+                vault_path: config.vault_path || null,
+                workspace_path: config.workspace_path || null,
+                vault_id: config.vault_id || null,
+            };
+        } catch {
+            continue;
+        }
     }
+    return {
+        vault_path: null,
+        workspace_path: null,
+        vault_id: null,
+    };
 }
 
 /**
@@ -553,7 +583,7 @@ async function readStdin(): Promise<string> {
     const server = new Server(
         {
             name: "gemini-obsidian",
-            version: "1.8.2",
+            version: "2.0.0",
         },
         {
             capabilities: {

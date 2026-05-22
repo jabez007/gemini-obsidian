@@ -1,0 +1,40 @@
+{
+  "name": "gemini-obsidian",
+  "version": "2.0.0",
+  "description": "Obsidian Vault integration with local RAG capabilities for Codex and Gemini CLI.",
+  "author": {
+    "name": "thoreinstein",
+    "url": "https://github.com/thoreinstein"
+  },
+  "homepage": "https://github.com/thoreinstein/gemini-obsidian",
+  "repository": "https://github.com/thoreinstein/gemini-obsidian",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "gemini-cli",
+    "obsidian",
+    "rag",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Obsidian Vault",
+    "shortDescription": "Search, read, and maintain an Obsidian vault from Codex.",
+    "longDescription": "Adds Obsidian vault tools, local RAG retrieval, and note-management skills to Codex while remaining compatible with the Gemini CLI extension manifest.",
+    "developerName": "thoreinstein",
+    "category": "Productivity",
+    "capabilities": [
+      "Search",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/thoreinstein/gemini-obsidian",
+    "defaultPrompt": [
+      "Search my Obsidian vault for notes about {{topic}}.",
+      "Index my vault and tell me if anything failed.",
+      "Open today's daily note and summarize the action items."
+    ],
+    "brandColor": "#4A6B57"
+  }
+}
