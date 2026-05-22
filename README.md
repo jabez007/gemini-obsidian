@@ -84,10 +84,10 @@ The first time you use a tool, the server can persist `vault_path`, `workspace_p
 
 For large vaults, you can tune indexing throughput and chunk size with environment variables. Neutral names are preferred, but the Gemini-prefixed names still work:
 
-- `OBSIDIAN_EMBED_BATCH_SIZE` or `GEMINI_OBSIDIAN_EMBED_BATCH_SIZE` (default: `48`)
-- `OBSIDIAN_MIN_CHUNK_CHARS` or `GEMINI_OBSIDIAN_MIN_CHUNK_CHARS` (default: `40`)
-- `OBSIDIAN_MAX_CHUNK_CHARS` or `GEMINI_OBSIDIAN_MAX_CHUNK_CHARS` (default: `1800`)
-- `OBSIDIAN_TARGET_CHUNK_CHARS` or `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS` (default: `700`)
+- `OBSIDIAN_EMBED_BATCH_SIZE`, `CODEX_OBSIDIAN_EMBED_BATCH_SIZE`, or `GEMINI_OBSIDIAN_EMBED_BATCH_SIZE` (default: `48`)
+- `OBSIDIAN_MIN_CHUNK_CHARS`, `CODEX_OBSIDIAN_MIN_CHUNK_CHARS`, or `GEMINI_OBSIDIAN_MIN_CHUNK_CHARS` (default: `40`)
+- `OBSIDIAN_MAX_CHUNK_CHARS`, `CODEX_OBSIDIAN_MAX_CHUNK_CHARS`, or `GEMINI_OBSIDIAN_MAX_CHUNK_CHARS` (default: `1800`)
+- `OBSIDIAN_TARGET_CHUNK_CHARS`, `CODEX_OBSIDIAN_TARGET_CHUNK_CHARS`, or `GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS` (default: `700`)
 
 Example preset for very large vaults:
 
