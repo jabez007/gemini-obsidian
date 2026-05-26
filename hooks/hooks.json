@@ -15,19 +15,6 @@
       }
     ],
     "BeforeTool": [],
-    "AfterTool": [
-      {
-        "matcher": "obsidian_(create|append)_note|obsidian_update_frontmatter|obsidian_replace_section|obsidian_insert_at_heading|obsidian_replace_in_note",
-        "hooks": [
-          {
-            "name": "obsidian-reindex",
-            "type": "command",
-            "command": "bash ${extensionPath}/scripts/reindex-note.sh",
-            "timeout": 30000,
-            "description": "Re-indexes only the changed note after it is created or modified."
-          }
-        ]
-      }
-    ]
+    "AfterTool": []
   }
 }

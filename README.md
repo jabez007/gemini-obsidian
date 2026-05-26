@@ -102,7 +102,8 @@ node dist/index.js obsidian_rag_index
 
 - **Codex** uses `.codex-plugin/plugin.json`, `.mcp.json`, and the repo `skills/` directory.
 - **Gemini CLI** continues to use `gemini-extension.json`, `commands/`, and `hooks/hooks.json`.
-- **Compatibility note**: the Gemini slash commands and lifecycle hooks remain Gemini-specific. Codex support is provided through MCP tools plus the shared skills.
+- **Shared behavior**: note-writing MCP tools now re-index the changed note inside the server, so post-write indexing works in both Codex and Gemini without relying on host hooks.
+- **Compatibility note**: the remaining Gemini hook config is only for Gemini session-start behavior. Codex lifecycle hooks can be added separately using Codex's hook system without changing Gemini's hook file.
 
 ## Available Tools
 

@@ -171,6 +171,29 @@ function getVaultId(providedId?: string): string | null {
     return providedId || VAULT_ID || null;
 }
 
+async function reindexNoteAfterWrite(
+    vaultPath: string,
+    relativePath: string,
+    workspacePath?: string | null,
+    vaultId?: string | null,
+) {
+    try {
+        const result = await indexer.indexFile(
+            vaultPath,
+            relativePath,
+            workspacePath,
+            vaultId,
+        );
+        if (!result.success) {
+            console.error(
+                `Post-write reindex failed for ${relativePath}: ${result.message ?? "unknown error"}`,
+            );
+        }
+    } catch (error) {
+        console.error(`Post-write reindex failed for ${relativePath}`, error);
+    }
+}
+
 /**
  * Helper to get Obsidian Daily Note configuration
  */
@@ -1066,19 +1089,27 @@ async function readStdin(): Promise<string> {
             }
             if (name === "obsidian_create_note") {
                 const vp = getVaultPath(args?.vault_path as string);
-                const filePath = getSafeFilePath(vp, String(args?.file_path));
+                const wp = getWorkspacePath(args?.workspace_path as string);
+                const vid = getVaultId(args?.vault_id as string);
+                const relativePath = String(args?.file_path);
+                const filePath = getSafeFilePath(vp, relativePath);
                 const content = String(args?.content || "");
                 await fs.mkdir(path.dirname(filePath), { recursive: true });
                 await fs.writeFile(filePath, content, "utf-8");
+                await reindexNoteAfterWrite(vp, relativePath, wp, vid);
                 return {
                     content: [{ type: "text", text: `Created note: ${args?.file_path}` }],
                 };
             }
             if (name === "obsidian_append_note") {
                 const vp = getVaultPath(args?.vault_path as string);
-                const filePath = getSafeFilePath(vp, String(args?.file_path));
+                const wp = getWorkspacePath(args?.workspace_path as string);
+                const vid = getVaultId(args?.vault_id as string);
+                const relativePath = String(args?.file_path);
+                const filePath = getSafeFilePath(vp, relativePath);
                 const content = String(args?.content || "");
                 await fs.appendFile(filePath, "\n" + content, "utf-8");
+                await reindexNoteAfterWrite(vp, relativePath, wp, vid);
                 return {
                     content: [
                         { type: "text", text: `Appended to note: ${args?.file_path}` },
@@ -1215,7 +1246,10 @@ async function readStdin(): Promise<string> {
             }
             if (name === "obsidian_update_frontmatter") {
                 const vp = getVaultPath(args?.vault_path as string);
-                const filePath = getSafeFilePath(vp, String(args?.file_path));
+                const wp = getWorkspacePath(args?.workspace_path as string);
+                const vid = getVaultId(args?.vault_id as string);
+                const relativePath = String(args?.file_path);
+                const filePath = getSafeFilePath(vp, relativePath);
                 const fileContent = await fs.readFile(filePath, "utf-8");
                 const updateArg =
                     args?.updates && typeof args.updates === "object"
@@ -1226,6 +1260,7 @@ async function readStdin(): Promise<string> {
                     applyFrontmatterUpdate(fileContent, updateArg),
                     "utf-8",
                 );
+                await reindexNoteAfterWrite(vp, relativePath, wp, vid);
                 return {
                     content: [
                         { type: "text", text: `Updated frontmatter in ${args?.file_path}` },
@@ -1234,7 +1269,10 @@ async function readStdin(): Promise<string> {
             }
             if (name === "obsidian_replace_section") {
                 const vp = getVaultPath(args?.vault_path as string);
-                const filePath = getSafeFilePath(vp, String(args?.file_path));
+                const wp = getWorkspacePath(args?.workspace_path as string);
+                const vid = getVaultId(args?.vault_id as string);
+                const relativePath = String(args?.file_path);
+                const filePath = getSafeFilePath(vp, relativePath);
                 const heading = String(args?.heading);
                 const content = String(args?.content);
                 const fileContent = await fs.readFile(filePath, "utf-8");
@@ -1249,6 +1287,7 @@ async function readStdin(): Promise<string> {
                     replaceSection(fileContent, range, content),
                     "utf-8",
                 );
+                await reindexNoteAfterWrite(vp, relativePath, wp, vid);
                 return {
                     content: [
                         {
@@ -1260,7 +1299,10 @@ async function readStdin(): Promise<string> {
             }
             if (name === "obsidian_insert_at_heading") {
                 const vp = getVaultPath(args?.vault_path as string);
-                const filePath = getSafeFilePath(vp, String(args?.file_path));
+                const wp = getWorkspacePath(args?.workspace_path as string);
+                const vid = getVaultId(args?.vault_id as string);
+                const relativePath = String(args?.file_path);
+                const filePath = getSafeFilePath(vp, relativePath);
                 const heading = String(args?.heading);
                 const content = String(args?.content);
                 const position = (args?.position || "end") as "beginning" | "end";
@@ -1271,6 +1313,7 @@ async function readStdin(): Promise<string> {
                     insertAtHeading(fileContent, heading, content, position, range),
                     "utf-8",
                 );
+                await reindexNoteAfterWrite(vp, relativePath, wp, vid);
                 return {
                     content: [
                         {
@@ -1282,7 +1325,10 @@ async function readStdin(): Promise<string> {
             }
             if (name === "obsidian_replace_in_note") {
                 const vp = getVaultPath(args?.vault_path as string);
-                const filePath = getSafeFilePath(vp, String(args?.file_path));
+                const wp = getWorkspacePath(args?.workspace_path as string);
+                const vid = getVaultId(args?.vault_id as string);
+                const relativePath = String(args?.file_path);
+                const filePath = getSafeFilePath(vp, relativePath);
                 const fileContent = await fs.readFile(filePath, "utf-8");
                 const updated = replaceInNote(
                     fileContent,
@@ -1290,6 +1336,7 @@ async function readStdin(): Promise<string> {
                     String(args?.new_text ?? ""),
                 );
                 await fs.writeFile(filePath, updated, "utf-8");
+                await reindexNoteAfterWrite(vp, relativePath, wp, vid);
                 return {
                     content: [
                         { type: "text", text: `Replaced text in ${args?.file_path}` },

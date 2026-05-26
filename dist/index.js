@@ -61247,6 +61247,23 @@ function getWorkspacePath(providedPath) {
 function getVaultId(providedId) {
   return providedId || VAULT_ID || null;
 }
+async function reindexNoteAfterWrite(vaultPath, relativePath, workspacePath, vaultId) {
+  try {
+    const result = await indexer.indexFile(
+      vaultPath,
+      relativePath,
+      workspacePath,
+      vaultId
+    );
+    if (!result.success) {
+      console.error(
+        `Post-write reindex failed for ${relativePath}: ${result.message ?? "unknown error"}`
+      );
+    }
+  } catch (error2) {
+    console.error(`Post-write reindex failed for ${relativePath}`, error2);
+  }
+}
 async function getDailyNoteConfig(vaultPath) {
   const configPath = path5.join(vaultPath, ".obsidian", "daily-notes.json");
   try {
@@ -62068,19 +62085,27 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
       }
       if (name2 === "obsidian_create_note") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const content = String(args2?.content || "");
         await fs5.mkdir(path5.dirname(filePath), { recursive: true });
         await fs5.writeFile(filePath, content, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [{ type: "text", text: `Created note: ${args2?.file_path}` }]
         };
       }
       if (name2 === "obsidian_append_note") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const content = String(args2?.content || "");
         await fs5.appendFile(filePath, "\n" + content, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             { type: "text", text: `Appended to note: ${args2?.file_path}` }
@@ -62212,7 +62237,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_update_frontmatter") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const updateArg = args2?.updates && typeof args2.updates === "object" ? { updates: args2.updates } : { key: String(args2?.key), value: String(args2?.value) };
         await fs5.writeFile(
@@ -62220,6 +62248,7 @@ Content: ${r.text}
           applyFrontmatterUpdate(fileContent, updateArg),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             { type: "text", text: `Updated frontmatter in ${args2?.file_path}` }
@@ -62228,7 +62257,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_replace_section") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const heading = String(args2?.heading);
         const content = String(args2?.content);
         const fileContent = await fs5.readFile(filePath, "utf-8");
@@ -62243,6 +62275,7 @@ Content: ${r.text}
           replaceSection(fileContent, range2, content),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             {
@@ -62254,7 +62287,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_insert_at_heading") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const heading = String(args2?.heading);
         const content = String(args2?.content);
         const position = args2?.position || "end";
@@ -62265,6 +62301,7 @@ Content: ${r.text}
           insertAtHeading(fileContent, heading, content, position, range2),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             {
@@ -62276,7 +62313,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_replace_in_note") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const updated = replaceInNote(
           fileContent,
@@ -62284,6 +62324,7 @@ Content: ${r.text}
           String(args2?.new_text ?? "")
         );
         await fs5.writeFile(filePath, updated, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             { type: "text", text: `Replaced text in ${args2?.file_path}` }
