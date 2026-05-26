@@ -60746,6 +60746,20 @@ var VaultIndexer = class {
     }
     return null;
   }
+  async ensureFtsIndex(table) {
+    try {
+      const indices = await table.listIndices();
+      const hasTextIndex = indices.some((index) => index.columns?.includes("text"));
+      if (hasTextIndex) {
+        console.error("FTS index already exists");
+        return;
+      }
+      await table.createIndex("text", { config: lancedb.Index.fts() });
+      console.error("created FTS index");
+    } catch (error2) {
+      console.error("error ensuring FTS index", error2);
+    }
+  }
   async writeHashesAtomic(hashPath, hashes) {
     const tmpPath = `${hashPath}.tmp`;
     await fs4.writeFile(tmpPath, JSON.stringify(hashes), "utf-8");
@@ -60808,11 +60822,7 @@ var VaultIndexer = class {
         let table;
         if (!tableNames.includes("notes")) {
           table = await db.createTable("notes", chunkRows);
-          try {
-            await table.createIndex("text", { config: lancedb.Index.fts() });
-          } catch (e) {
-            console.error("FTS error", e);
-          }
+          await this.ensureFtsIndex(table);
         } else {
           table = await db.openTable("notes");
           const schema = await table.schema();
@@ -60821,17 +60831,9 @@ var VaultIndexer = class {
             console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
             await db.dropTable("notes");
             table = await db.createTable("notes", chunkRows);
-            try {
-              await table.createIndex("text", { config: lancedb.Index.fts() });
-            } catch (e) {
-              console.error("FTS error", e);
-            }
+            await this.ensureFtsIndex(table);
           } else {
-            try {
-              await table.createIndex("text", { config: lancedb.Index.fts() });
-            } catch (e) {
-              console.error("FTS error", e);
-            }
+            await this.ensureFtsIndex(table);
             await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
             await table.add(chunkRows);
           }
@@ -61035,26 +61037,14 @@ var VaultIndexer = class {
                 console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
                 await db.dropTable("notes");
                 table = await db.createTable("notes", chunkRows);
-                try {
-                  await table.createIndex("text", { config: lancedb.Index.fts() });
-                } catch (e) {
-                  console.error("FTS error", e);
-                }
+                await this.ensureFtsIndex(table);
               } else {
-                try {
-                  await table.createIndex("text", { config: lancedb.Index.fts() });
-                } catch (e) {
-                  console.error("FTS error", e);
-                }
+                await this.ensureFtsIndex(table);
                 await table.add(chunkRows);
               }
             } catch (e) {
               table = await db.createTable("notes", chunkRows);
-              try {
-                await table.createIndex("text", { config: lancedb.Index.fts() });
-              } catch (e2) {
-                console.error("FTS error", e2);
-              }
+              await this.ensureFtsIndex(table);
             }
             tableInitialized = true;
           } else {
