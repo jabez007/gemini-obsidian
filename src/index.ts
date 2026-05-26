@@ -47,7 +47,6 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { glob } from "glob";
-import matter from "gray-matter";
 import moment from "moment";
 import { VaultIndexer } from "./rag/store.js";
 import {

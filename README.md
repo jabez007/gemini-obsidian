@@ -144,6 +144,8 @@ The following tools are exposed through the MCP server for either host:
 ```bash
 # Build changes
 npm run build
+# Lint
+npm run lint
 # Type check
 npm run type-check
 # Run tests
