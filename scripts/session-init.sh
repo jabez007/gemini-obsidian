@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_FILE="$HOME/.gemini-obsidian.config.json"
-VAULT_PATH="${OBSIDIAN_VAULT_PATH:-}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}}"
+CONFIG_PRIMARY="$HOME/.obsidian-mcp.config.json"
+CONFIG_LEGACY="$HOME/.gemini-obsidian.config.json"
+VAULT_PATH="${OBSIDIAN_VAULT_PATH:-${CODEX_OBSIDIAN_VAULT_PATH:-${GEMINI_OBSIDIAN_VAULT_PATH:-}}}"
 
-if [ -z "$VAULT_PATH" ] && [ -f "$CONFIG_FILE" ]; then
-  VAULT_PATH=$(node -e "const fs=require('fs'); try { const v=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).vault_path || ''; process.stdout.write(v); } catch { process.stdout.write(''); }" "$CONFIG_FILE")
+if [ -z "$VAULT_PATH" ]; then
+  for config_file in "$CONFIG_PRIMARY" "$CONFIG_LEGACY"; do
+    if [ -f "$config_file" ]; then
+      VAULT_PATH=$(node -e "const fs=require('fs'); try { const v=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')).vault_path || ''; process.stdout.write(v); } catch { process.stdout.write(''); }" "$config_file")
+      if [ -n "$VAULT_PATH" ]; then
+        break
+      fi
+    fi
+  done
 fi
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
 
 message=""
 if [ -n "$VAULT_PATH" ] && [ -d "$VAULT_PATH" ]; then
@@ -34,5 +40,6 @@ else
   message="Obsidian vault not configured. Use obsidian_set_vault to set your vault path."
 fi
 
-escaped_message=$(printf '%s' "$message" | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => process.stdout.write(JSON.stringify(data)));")
-printf '{"systemMessage":%s,"suppressOutput":true}\n' "$escaped_message"
+escaped_message=$(printf '%s' "$message" | node -e "let data=''; process.stdin.on('data', c => data += c); process.stdin.on('end', () => process.stdout.write(JSON.stringify(data)));" )
+printf '{"systemMessage":%s,"suppressOutput":true,"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":%s}}
+' "$escaped_message" "$escaped_message"

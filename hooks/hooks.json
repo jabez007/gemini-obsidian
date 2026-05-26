@@ -2,14 +2,12 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "name": "obsidian-session-init",
             "type": "command",
-            "command": "bash ${extensionPath}/scripts/session-init.sh",
-            "timeout": 120000,
-            "description": "Reports vault status and refreshes the RAG index when a Gemini session starts."
+            "command": "bash ${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT:-${extensionPath}}}/scripts/session-init.sh",
+            "description": "Reports vault status and refreshes the RAG index when a session starts."
           }
         ]
       }
