@@ -150,8 +150,11 @@ export class VaultIndexer {
 
   private async ensureFtsIndex(table: lancedb.Table) {
     try {
-      const indices = await table.listIndices() as Array<{ columns?: string[] }>;
-      const hasTextIndex = indices.some((index) => index.columns?.includes('text'));
+      const indices = await table.listIndices() as Array<{ columns?: string[]; indexType?: string; type?: string }>;
+      const hasTextIndex = indices.some((index) => {
+        const indexType = index.indexType ?? index.type;
+        return indexType === 'FTS' && index.columns?.includes('text');
+      });
       if (hasTextIndex) {
         console.error('FTS index already exists');
         return;

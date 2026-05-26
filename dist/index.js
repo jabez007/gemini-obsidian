@@ -60749,7 +60749,10 @@ var VaultIndexer = class {
   async ensureFtsIndex(table) {
     try {
       const indices = await table.listIndices();
-      const hasTextIndex = indices.some((index) => index.columns?.includes("text"));
+      const hasTextIndex = indices.some((index) => {
+        const indexType = index.indexType ?? index.type;
+        return indexType === "FTS" && index.columns?.includes("text");
+      });
       if (hasTextIndex) {
         console.error("FTS index already exists");
         return;
