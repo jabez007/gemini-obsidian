@@ -60987,6 +60987,7 @@ var VaultIndexer = class {
           console.error("Schema mismatch detected (missing 'entities'). Switching to full reindex.");
           return this.indexVault(vaultPath, true, workspacePath, vaultId);
         }
+        await this.ensureFtsIndex(table);
         const pathsToDelete = [...changedPaths, ...deletedPaths];
         if (pathsToDelete.length > 0) {
           const DELETE_BATCH = 100;
