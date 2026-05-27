@@ -2,32 +2,17 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "name": "obsidian-session-init",
             "type": "command",
-            "command": "bash ${extensionPath}/scripts/session-init.sh",
-            "timeout": 120000,
-            "description": "Reports vault status and refreshes the RAG index when a Gemini session starts."
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT:-${extensionPath}}}/scripts/session-init.sh\"",
+            "description": "Reports vault status and refreshes the RAG index when a session starts."
           }
         ]
       }
     ],
     "BeforeTool": [],
-    "AfterTool": [
-      {
-        "matcher": "obsidian_(create|append)_note|obsidian_update_frontmatter|obsidian_replace_section|obsidian_insert_at_heading|obsidian_replace_in_note",
-        "hooks": [
-          {
-            "name": "obsidian-reindex",
-            "type": "command",
-            "command": "bash ${extensionPath}/scripts/reindex-note.sh",
-            "timeout": 30000,
-            "description": "Re-indexes only the changed note after it is created or modified."
-          }
-        ]
-      }
-    ]
+    "AfterTool": []
   }
 }

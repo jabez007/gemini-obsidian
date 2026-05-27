@@ -9,10 +9,21 @@ import { Embedder } from './embedder.js';
 import { buildEmbeddingInputs, ChunkingOptions, normalizeToStringArray, NoteMetadata } from './chunking.js';
 import { getSafeFilePath } from '../utils.js';
 
+function getFirstNumericEnv(keys: string[], fallback: number): number {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === 'string' && value.length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return fallback;
+}
+
 function chunkingOptionsFromEnv(): ChunkingOptions {
-  const minRaw = Number(process.env.GEMINI_OBSIDIAN_MIN_CHUNK_CHARS ?? '40');
-  const maxRaw = Number(process.env.GEMINI_OBSIDIAN_MAX_CHUNK_CHARS ?? '1800');
-  const targetRaw = Number(process.env.GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS ?? '700');
+  const minRaw = getFirstNumericEnv(['OBSIDIAN_MIN_CHUNK_CHARS', 'CODEX_OBSIDIAN_MIN_CHUNK_CHARS', 'GEMINI_OBSIDIAN_MIN_CHUNK_CHARS'], 40);
+  const maxRaw = getFirstNumericEnv(['OBSIDIAN_MAX_CHUNK_CHARS', 'CODEX_OBSIDIAN_MAX_CHUNK_CHARS', 'GEMINI_OBSIDIAN_MAX_CHUNK_CHARS'], 1800);
+  const targetRaw = getFirstNumericEnv(['OBSIDIAN_TARGET_CHUNK_CHARS', 'CODEX_OBSIDIAN_TARGET_CHUNK_CHARS', 'GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS'], 700);
   const min = Number.isFinite(minRaw) && minRaw > 0 ? Math.floor(minRaw) : 40;
   const max = Number.isFinite(maxRaw) && maxRaw > 0 ? Math.floor(maxRaw) : 1800;
   const target = Number.isFinite(targetRaw) && targetRaw > min ? Math.floor(targetRaw) : 700;
@@ -137,6 +148,25 @@ export class VaultIndexer {
     return null;
   }
 
+  private async ensureFtsIndex(table: lancedb.Table) {
+    try {
+      const indices = await table.listIndices() as Array<{ columns?: string[]; indexType?: string; type?: string }>;
+      const hasTextIndex = indices.some((index) => {
+        const indexType = index.indexType ?? index.type;
+        return indexType === 'FTS' && index.columns?.includes('text');
+      });
+      if (hasTextIndex) {
+        console.error('FTS index already exists');
+        return;
+      }
+
+      await table.createIndex('text', { config: lancedb.Index.fts() });
+      console.error('created FTS index');
+    } catch (error) {
+      console.error('error ensuring FTS index', error);
+    }
+  }
+
   private async writeHashesAtomic(hashPath: string, hashes: Record<string, string>) {
     const tmpPath = `${hashPath}.tmp`;
     await fs.writeFile(tmpPath, JSON.stringify(hashes), 'utf-8');
@@ -214,7 +244,7 @@ export class VaultIndexer {
           let table: lancedb.Table;
           if (!tableNames.includes('notes')) {
               table = await db.createTable('notes', chunkRows);
-              try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
+              await this.ensureFtsIndex(table);
           } else {
               table = await db.openTable('notes');
               const schema = await table.schema();
@@ -224,9 +254,9 @@ export class VaultIndexer {
                   console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
                   await db.dropTable('notes');
                   table = await db.createTable('notes', chunkRows);
-                  try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
+                  await this.ensureFtsIndex(table);
               } else {
-                  try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
+                  await this.ensureFtsIndex(table);
                   // Delete old chunks for this file
                   await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
                   await table.add(chunkRows);
@@ -281,7 +311,7 @@ export class VaultIndexer {
       const hasPreviousHashes = Object.keys(previousHashes).length > 0;
       const canIncremental = tableExists && hasPreviousHashes && !force;
 
-      const batchSizeRaw = Number(process.env.GEMINI_OBSIDIAN_EMBED_BATCH_SIZE ?? '48');
+      const batchSizeRaw = getFirstNumericEnv(['OBSIDIAN_EMBED_BATCH_SIZE', 'CODEX_OBSIDIAN_EMBED_BATCH_SIZE', 'GEMINI_OBSIDIAN_EMBED_BATCH_SIZE'], 48);
       const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.min(Math.floor(batchSizeRaw), 256) : 48;
       const useProgressBar = process.stderr.isTTY === true;
       const progressInterval = 100;
@@ -415,6 +445,8 @@ export class VaultIndexer {
           return this.indexVault(vaultPath, true, workspacePath, vaultId);
         }
 
+        await this.ensureFtsIndex(table);
+
         const pathsToDelete = [...changedPaths, ...deletedPaths];
         if (pathsToDelete.length > 0) {
           const DELETE_BATCH = 100;
@@ -472,14 +504,14 @@ export class VaultIndexer {
                 console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
                 await db.dropTable('notes');
                 table = await db.createTable('notes', chunkRows);
-                try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
+                await this.ensureFtsIndex(table);
               } else {
-                try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
+                await this.ensureFtsIndex(table);
                 await table.add(chunkRows);
               }
             } catch (e) {
               table = await db.createTable('notes', chunkRows);
-              try { await table.createIndex('text', { config: lancedb.Index.fts() }); } catch (e) { console.error("FTS error", e); }
+              await this.ensureFtsIndex(table);
             }
             tableInitialized = true;
           } else {

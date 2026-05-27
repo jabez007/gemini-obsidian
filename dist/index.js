@@ -60642,10 +60642,20 @@ function applyFrontmatterUpdate(fileContent, update) {
 }
 
 // src/rag/store.ts
+function getFirstNumericEnv(keys, fallback) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return fallback;
+}
 function chunkingOptionsFromEnv() {
-  const minRaw = Number(process.env.GEMINI_OBSIDIAN_MIN_CHUNK_CHARS ?? "40");
-  const maxRaw = Number(process.env.GEMINI_OBSIDIAN_MAX_CHUNK_CHARS ?? "1800");
-  const targetRaw = Number(process.env.GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS ?? "700");
+  const minRaw = getFirstNumericEnv(["OBSIDIAN_MIN_CHUNK_CHARS", "CODEX_OBSIDIAN_MIN_CHUNK_CHARS", "GEMINI_OBSIDIAN_MIN_CHUNK_CHARS"], 40);
+  const maxRaw = getFirstNumericEnv(["OBSIDIAN_MAX_CHUNK_CHARS", "CODEX_OBSIDIAN_MAX_CHUNK_CHARS", "GEMINI_OBSIDIAN_MAX_CHUNK_CHARS"], 1800);
+  const targetRaw = getFirstNumericEnv(["OBSIDIAN_TARGET_CHUNK_CHARS", "CODEX_OBSIDIAN_TARGET_CHUNK_CHARS", "GEMINI_OBSIDIAN_TARGET_CHUNK_CHARS"], 700);
   const min2 = Number.isFinite(minRaw) && minRaw > 0 ? Math.floor(minRaw) : 40;
   const max2 = Number.isFinite(maxRaw) && maxRaw > 0 ? Math.floor(maxRaw) : 1800;
   const target = Number.isFinite(targetRaw) && targetRaw > min2 ? Math.floor(targetRaw) : 700;
@@ -60736,6 +60746,23 @@ var VaultIndexer = class {
     }
     return null;
   }
+  async ensureFtsIndex(table) {
+    try {
+      const indices = await table.listIndices();
+      const hasTextIndex = indices.some((index) => {
+        const indexType = index.indexType ?? index.type;
+        return indexType === "FTS" && index.columns?.includes("text");
+      });
+      if (hasTextIndex) {
+        console.error("FTS index already exists");
+        return;
+      }
+      await table.createIndex("text", { config: lancedb.Index.fts() });
+      console.error("created FTS index");
+    } catch (error2) {
+      console.error("error ensuring FTS index", error2);
+    }
+  }
   async writeHashesAtomic(hashPath, hashes) {
     const tmpPath = `${hashPath}.tmp`;
     await fs4.writeFile(tmpPath, JSON.stringify(hashes), "utf-8");
@@ -60798,11 +60825,7 @@ var VaultIndexer = class {
         let table;
         if (!tableNames.includes("notes")) {
           table = await db.createTable("notes", chunkRows);
-          try {
-            await table.createIndex("text", { config: lancedb.Index.fts() });
-          } catch (e) {
-            console.error("FTS error", e);
-          }
+          await this.ensureFtsIndex(table);
         } else {
           table = await db.openTable("notes");
           const schema = await table.schema();
@@ -60811,17 +60834,9 @@ var VaultIndexer = class {
             console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
             await db.dropTable("notes");
             table = await db.createTable("notes", chunkRows);
-            try {
-              await table.createIndex("text", { config: lancedb.Index.fts() });
-            } catch (e) {
-              console.error("FTS error", e);
-            }
+            await this.ensureFtsIndex(table);
           } else {
-            try {
-              await table.createIndex("text", { config: lancedb.Index.fts() });
-            } catch (e) {
-              console.error("FTS error", e);
-            }
+            await this.ensureFtsIndex(table);
             await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
             await table.add(chunkRows);
           }
@@ -60867,7 +60882,7 @@ var VaultIndexer = class {
       const tableExists = tableNames.includes("notes");
       const hasPreviousHashes = Object.keys(previousHashes).length > 0;
       const canIncremental = tableExists && hasPreviousHashes && !force;
-      const batchSizeRaw = Number(process.env.GEMINI_OBSIDIAN_EMBED_BATCH_SIZE ?? "48");
+      const batchSizeRaw = getFirstNumericEnv(["OBSIDIAN_EMBED_BATCH_SIZE", "CODEX_OBSIDIAN_EMBED_BATCH_SIZE", "GEMINI_OBSIDIAN_EMBED_BATCH_SIZE"], 48);
       const batchSize = Number.isFinite(batchSizeRaw) && batchSizeRaw > 0 ? Math.min(Math.floor(batchSizeRaw), 256) : 48;
       const useProgressBar = process.stderr.isTTY === true;
       const progressInterval = 100;
@@ -60975,6 +60990,7 @@ var VaultIndexer = class {
           console.error("Schema mismatch detected (missing 'entities'). Switching to full reindex.");
           return this.indexVault(vaultPath, true, workspacePath, vaultId);
         }
+        await this.ensureFtsIndex(table);
         const pathsToDelete = [...changedPaths, ...deletedPaths];
         if (pathsToDelete.length > 0) {
           const DELETE_BATCH = 100;
@@ -61025,26 +61041,14 @@ var VaultIndexer = class {
                 console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
                 await db.dropTable("notes");
                 table = await db.createTable("notes", chunkRows);
-                try {
-                  await table.createIndex("text", { config: lancedb.Index.fts() });
-                } catch (e) {
-                  console.error("FTS error", e);
-                }
+                await this.ensureFtsIndex(table);
               } else {
-                try {
-                  await table.createIndex("text", { config: lancedb.Index.fts() });
-                } catch (e) {
-                  console.error("FTS error", e);
-                }
+                await this.ensureFtsIndex(table);
                 await table.add(chunkRows);
               }
             } catch (e) {
               table = await db.createTable("notes", chunkRows);
-              try {
-                await table.createIndex("text", { config: lancedb.Index.fts() });
-              } catch (e2) {
-                console.error("FTS error", e2);
-              }
+              await this.ensureFtsIndex(table);
             }
             tableInitialized = true;
           } else {
@@ -61134,7 +61138,7 @@ try {
   const isCompatibleOrt = typeof ortVersion === "string" && /^1\.14(\.|$)/.test(ortVersion);
   if (!isCompatibleOrt) {
     console.error(
-      "\n[Gemini Obsidian] Error: Incompatible onnxruntime-node version detected."
+      "\n[Obsidian MCP] Error: Incompatible onnxruntime-node version detected."
     );
     console.error(`Installed: ${ortVersion ?? "unknown"}, required: 1.14.x`);
     console.error(
@@ -61149,10 +61153,12 @@ try {
   }
 } catch (e) {
   console.error(
-    "\n[Gemini Obsidian] Error: Required native dependencies are missing."
+    "\n[Obsidian MCP] Error: Required native dependencies are missing."
   );
   console.error('This usually happens if "npm install" was not run or failed.');
-  console.error("Please run the following command in the extension directory:");
+  console.error(
+    "Please run the following command in the project/plugin directory:"
+  );
   console.error(
     `  cd ${require("path").join(__dirname, "..")} && npm install
 `
@@ -61160,42 +61166,70 @@ try {
   process.exit(1);
 }
 var DEFAULT_DAILY_NOTE_FORMAT = "YYYY-MM-DD";
-var VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || null;
-var WORKSPACE_PATH = process.env.GEMINI_OBSIDIAN_WORKSPACE_PATH || null;
-var VAULT_ID = process.env.GEMINI_OBSIDIAN_VAULT_ID || null;
+function getFirstEnv(...keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+var VAULT_PATH = getFirstEnv(
+  "OBSIDIAN_VAULT_PATH",
+  "CODEX_OBSIDIAN_VAULT_PATH",
+  "GEMINI_OBSIDIAN_VAULT_PATH"
+);
+var WORKSPACE_PATH = getFirstEnv(
+  "OBSIDIAN_WORKSPACE_PATH",
+  "CODEX_OBSIDIAN_WORKSPACE_PATH",
+  "GEMINI_OBSIDIAN_WORKSPACE_PATH"
+);
+var VAULT_ID = getFirstEnv(
+  "OBSIDIAN_VAULT_ID",
+  "CODEX_OBSIDIAN_VAULT_ID",
+  "GEMINI_OBSIDIAN_VAULT_ID"
+);
 var indexer = new VaultIndexer();
-var CONFIG_PATH = path5.join(os3.homedir(), ".gemini-obsidian.config.json");
+var CONFIG_PATHS = [
+  path5.join(os3.homedir(), ".obsidian-mcp.config.json"),
+  path5.join(os3.homedir(), ".gemini-obsidian.config.json")
+];
 async function saveConfig(options2) {
   try {
-    await fs5.writeFile(
-      CONFIG_PATH,
-      JSON.stringify({
-        vault_path: options2.vaultPath,
-        workspace_path: options2.workspacePath ?? null,
-        vault_id: options2.vaultId ?? null
-      }),
-      "utf-8"
+    const serialized = JSON.stringify({
+      vault_path: options2.vaultPath,
+      workspace_path: options2.workspacePath ?? null,
+      vault_id: options2.vaultId ?? null
+    });
+    await Promise.all(
+      CONFIG_PATHS.map(
+        (configPath) => fs5.writeFile(configPath, serialized, "utf-8")
+      )
     );
   } catch (e) {
     console.error("Failed to save config", e);
   }
 }
 async function loadConfig2() {
-  try {
-    const data = await fs5.readFile(CONFIG_PATH, "utf-8");
-    const config2 = JSON.parse(data);
-    return {
-      vault_path: config2.vault_path || null,
-      workspace_path: config2.workspace_path || null,
-      vault_id: config2.vault_id || null
-    };
-  } catch {
-    return {
-      vault_path: null,
-      workspace_path: null,
-      vault_id: null
-    };
+  for (const configPath of CONFIG_PATHS) {
+    try {
+      const data = await fs5.readFile(configPath, "utf-8");
+      const config2 = JSON.parse(data);
+      return {
+        vault_path: config2.vault_path || null,
+        workspace_path: config2.workspace_path || null,
+        vault_id: config2.vault_id || null
+      };
+    } catch {
+      continue;
+    }
   }
+  return {
+    vault_path: null,
+    workspace_path: null,
+    vault_id: null
+  };
 }
 function getVaultPath(providedPath) {
   const p = providedPath || VAULT_PATH;
@@ -61212,6 +61246,23 @@ function getWorkspacePath(providedPath) {
 }
 function getVaultId(providedId) {
   return providedId || VAULT_ID || null;
+}
+async function reindexNoteAfterWrite(vaultPath, relativePath, workspacePath, vaultId) {
+  try {
+    const result = await indexer.indexFile(
+      vaultPath,
+      relativePath,
+      workspacePath,
+      vaultId
+    );
+    if (!result.success) {
+      console.error(
+        `Post-write reindex failed for ${relativePath}: ${result.message ?? "unknown error"}`
+      );
+    }
+  } catch (error2) {
+    console.error(`Post-write reindex failed for ${relativePath}`, error2);
+  }
 }
 async function getDailyNoteConfig(vaultPath) {
   const configPath = path5.join(vaultPath, ".obsidian", "daily-notes.json");
@@ -61328,16 +61379,24 @@ async function readStdin() {
         result = await fs5.readFile(filePath, "utf-8");
       } else if (toolName === "obsidian_create_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
+        const wp = getWorkspacePath(parsedArgs.workspace_path);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const relativePath = String(parsedArgs.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const content = String(parsedArgs.content || "");
         await fs5.mkdir(path5.dirname(filePath), { recursive: true });
         await fs5.writeFile(filePath, content, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         result = `Created note: ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_append_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
+        const wp = getWorkspacePath(parsedArgs.workspace_path);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const relativePath = String(parsedArgs.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const content = String(parsedArgs.content || "");
         await fs5.appendFile(filePath, "\n" + content, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         result = `Appended to note: ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_get_daily_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
@@ -61447,7 +61506,10 @@ Content: ${r.text}`).join("\n---\n");
         result = `Moved ${parsedArgs.source_path} to ${parsedArgs.dest_path}`;
       } else if (toolName === "obsidian_update_frontmatter") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
+        const wp = getWorkspacePath(parsedArgs.workspace_path);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const relativePath = String(parsedArgs.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         let updateArg;
         if (parsedArgs.updates) {
@@ -61464,10 +61526,14 @@ Content: ${r.text}`).join("\n---\n");
           applyFrontmatterUpdate(fileContent, updateArg),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         result = `Updated frontmatter in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_replace_section") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
+        const wp = getWorkspacePath(parsedArgs.workspace_path);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const relativePath = String(parsedArgs.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const heading = String(parsedArgs.heading);
         const content = String(parsedArgs.content);
         const fileContent = await fs5.readFile(filePath, "utf-8");
@@ -61481,10 +61547,14 @@ Content: ${r.text}`).join("\n---\n");
           replaceSection(fileContent, range2, content),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         result = `Replaced section "${heading}" in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_insert_at_heading") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
+        const wp = getWorkspacePath(parsedArgs.workspace_path);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const relativePath = String(parsedArgs.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const heading = String(parsedArgs.heading);
         const content = String(parsedArgs.content);
         const position = parsedArgs.position || "end";
@@ -61495,10 +61565,14 @@ Content: ${r.text}`).join("\n---\n");
           insertAtHeading(fileContent, heading, content, position, range2),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         result = `Inserted content under "${heading}" in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_replace_in_note") {
         const vp = getVaultPath(parsedArgs.vault_path);
-        const filePath = getSafeFilePath(vp, String(parsedArgs.file_path));
+        const wp = getWorkspacePath(parsedArgs.workspace_path);
+        const vid = getVaultId(parsedArgs.vault_id);
+        const relativePath = String(parsedArgs.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const updated = replaceInNote(
           fileContent,
@@ -61506,6 +61580,7 @@ Content: ${r.text}`).join("\n---\n");
           String(parsedArgs.new_text ?? "")
         );
         await fs5.writeFile(filePath, updated, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         result = `Replaced text in ${parsedArgs.file_path}`;
       } else if (toolName === "obsidian_get_broken_links") {
         const vp = getVaultPath(parsedArgs.vault_path);
@@ -61579,7 +61654,7 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
   const server = new Server(
     {
       name: "gemini-obsidian",
-      version: "1.8.2"
+      version: "2.0.0"
     },
     {
       capabilities: {
@@ -61672,6 +61747,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
               vault_path: {
                 type: "string",
                 description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
               }
             },
             required: ["file_path", "content"]
@@ -61691,6 +61774,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
               vault_path: {
                 type: "string",
                 description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
               }
             },
             required: ["file_path", "content"]
@@ -61866,6 +61957,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
               vault_path: {
                 type: "string",
                 description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
               }
             },
             required: ["file_path"]
@@ -61892,6 +61991,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
               vault_path: {
                 type: "string",
                 description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
               }
             },
             required: ["file_path", "heading", "content"]
@@ -61920,6 +62027,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
               vault_path: {
                 type: "string",
                 description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
               }
             },
             required: ["file_path", "heading", "content"]
@@ -61946,6 +62061,14 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
               vault_path: {
                 type: "string",
                 description: "Optional vault path override"
+              },
+              workspace_path: {
+                type: "string",
+                description: "Optional workspace path override"
+              },
+              vault_id: {
+                type: "string",
+                description: "Optional unique identifier for the vault"
               }
             },
             required: ["file_path", "old_text"]
@@ -62034,19 +62157,27 @@ ${broken.map((entry) => `[[${entry.target}]] \u2014 in: ${entry.refs.join(", ")}
       }
       if (name2 === "obsidian_create_note") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const content = String(args2?.content || "");
         await fs5.mkdir(path5.dirname(filePath), { recursive: true });
         await fs5.writeFile(filePath, content, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [{ type: "text", text: `Created note: ${args2?.file_path}` }]
         };
       }
       if (name2 === "obsidian_append_note") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const content = String(args2?.content || "");
         await fs5.appendFile(filePath, "\n" + content, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             { type: "text", text: `Appended to note: ${args2?.file_path}` }
@@ -62178,7 +62309,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_update_frontmatter") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const updateArg = args2?.updates && typeof args2.updates === "object" ? { updates: args2.updates } : { key: String(args2?.key), value: String(args2?.value) };
         await fs5.writeFile(
@@ -62186,6 +62320,7 @@ Content: ${r.text}
           applyFrontmatterUpdate(fileContent, updateArg),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             { type: "text", text: `Updated frontmatter in ${args2?.file_path}` }
@@ -62194,7 +62329,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_replace_section") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const heading = String(args2?.heading);
         const content = String(args2?.content);
         const fileContent = await fs5.readFile(filePath, "utf-8");
@@ -62209,6 +62347,7 @@ Content: ${r.text}
           replaceSection(fileContent, range2, content),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             {
@@ -62220,7 +62359,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_insert_at_heading") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const heading = String(args2?.heading);
         const content = String(args2?.content);
         const position = args2?.position || "end";
@@ -62231,6 +62373,7 @@ Content: ${r.text}
           insertAtHeading(fileContent, heading, content, position, range2),
           "utf-8"
         );
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             {
@@ -62242,7 +62385,10 @@ Content: ${r.text}
       }
       if (name2 === "obsidian_replace_in_note") {
         const vp = getVaultPath(args2?.vault_path);
-        const filePath = getSafeFilePath(vp, String(args2?.file_path));
+        const wp = getWorkspacePath(args2?.workspace_path);
+        const vid = getVaultId(args2?.vault_id);
+        const relativePath = String(args2?.file_path);
+        const filePath = getSafeFilePath(vp, relativePath);
         const fileContent = await fs5.readFile(filePath, "utf-8");
         const updated = replaceInNote(
           fileContent,
@@ -62250,6 +62396,7 @@ Content: ${r.text}
           String(args2?.new_text ?? "")
         );
         await fs5.writeFile(filePath, updated, "utf-8");
+        await reindexNoteAfterWrite(vp, relativePath, wp, vid);
         return {
           content: [
             { type: "text", text: `Replaced text in ${args2?.file_path}` }
