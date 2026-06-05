@@ -11,9 +11,11 @@ Map the link graph around a specific note.
 
 ## Workflow
 
-1. Call `obsidian_get_links` on the specified note to find outgoing links
-2. Call `obsidian_get_backlinks` on the same note to find incoming links
-3. Present a connection map:
+1. Resolve the note identifier to a single relative `.md` file path.
+2. Call `obsidian_get_links` with that resolved path as `file_path` to find outgoing links.
+3. Derive the basename from the same resolved path by removing directories and the `.md` extension.
+4. Call `obsidian_get_backlinks` with that basename as `file_name` to find incoming links.
+5. Present a connection map:
    - **Outgoing links**: Notes this note references
    - **Incoming links**: Notes that reference this note
 
@@ -21,10 +23,14 @@ Map the link graph around a specific note.
 
 The note path or name follows the skill invocation. Example: `/links Projects/MyProject.md`
 
+Normalization rules:
+- If the user provides a relative `.md` path, use it directly as the resolved path.
+- If the user provides only a note name or an ambiguous identifier, call `obsidian_search_notes` first and resolve it to one relative `.md` path before calling either link tool.
+
 ## Tips
 
 - This skill focuses on explicit `[[wikilinks]]`.
 - For a broader "meta-graph" of connections, use `/research` to leverage graph-aware semantic search (based on `entities` and `communities` in frontmatter).
-- If the user provides just a name (no path), try searching for it first with `obsidian_search_notes`
-- For `obsidian_get_backlinks`, pass the note name without the `.md` extension
-- For `obsidian_get_links`, pass the full relative path with `.md`
+- Always derive both tool arguments from the same resolved path so outgoing and incoming link results stay aligned.
+- For `obsidian_get_links`, pass the full relative path with `.md` as `file_path`.
+- For `obsidian_get_backlinks`, pass the basename from that same path without the `.md` extension as `file_name`.

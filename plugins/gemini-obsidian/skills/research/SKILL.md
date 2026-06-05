@@ -18,7 +18,7 @@ Research a topic across the user's Obsidian vault using a multi-pass, graph-awar
 
 2. **Targeted Reading** — For each high-relevance result, call `obsidian_read_note` to get the full context. Skim for the most pertinent sections.
 
-3. **Link Traversal** — Check `obsidian_get_links` on the most relevant notes to find connected knowledge. Read promising linked notes.
+3. **Link Traversal** — When a relevant note is identified, normalize it to one relative `.md` file path first. Call `obsidian_get_links` with that value as `file_path` to find connected knowledge, then read promising linked notes.
 
 4. **Synthesis** — Combine findings into a clear answer with citations:
    - Reference specific notes by name: `[[Note Name]]`
