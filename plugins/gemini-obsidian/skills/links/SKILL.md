@@ -25,7 +25,8 @@ The note path or name follows the skill invocation. Example: `/links Projects/My
 
 Normalization rules:
 - If the user provides a relative `.md` path, use it directly as the resolved path.
-- If the user provides only a note name or an ambiguous identifier, call `obsidian_search_notes` first and resolve it to one relative `.md` path before calling either link tool.
+- If the user provides only a note name or an ambiguous identifier, call `obsidian_search_notes` first and resolve it to one raw relative `.md` path before calling either link tool.
+- When selecting a result from `obsidian_search_notes`, strip any display annotations such as ` (Filename match)`, ensure the remaining value ends with `.md`, and use that cleaned relative path as the resolved path.
 
 ## Tips
 
