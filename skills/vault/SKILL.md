@@ -27,4 +27,4 @@ After setting, confirm: "Vault path set to: [path]"
 ## Tips
 
 - You can also set a custom `workspace_path` (for metadata storage) or a `vault_id` (for sharing metadata across machines) using the `obsidian_set_vault` tool.
-- If the vault path is invalid, the agent will ask for a correction.
+- The `obsidian_set_vault` tool does not validate the vault path upfront; if the path is invalid, later commands may fail and the agent may then prompt for a correction.
