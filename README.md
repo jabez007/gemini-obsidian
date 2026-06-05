@@ -17,7 +17,7 @@ This project integrates your **Obsidian Vault** into both **Codex** and the lega
 
 ## Prerequisites
 
-- **Node.js**: v18 or higher.
+- **Node.js**: v20 or higher.
 - **Codex CLI** or **Gemini CLI**.
 - **Obsidian Vault**: A local folder containing your markdown notes.
 
@@ -25,11 +25,25 @@ This project integrates your **Obsidian Vault** into both **Codex** and the lega
 
 ### Codex plugin
 
-This repo now includes a Codex plugin manifest at `.codex-plugin/plugin.json` and an MCP launcher at `.mcp.json`. Install it as a local plugin from this repo, then make sure dependencies are installed:
+This repo now includes a repo-scoped Codex marketplace at `.agents/plugins/marketplace.json` and a dedicated plugin wrapper at `plugins/gemini-obsidian/`. The Codex plugin launches the shared MCP server from `dist/index.js`, so the server implementation stays shared with the Gemini extension.
 
 ```sh
 npm install
 npm run build
+```
+
+Then open Codex in this repository, restart if it was already running, and install the plugin from the repo marketplace:
+
+```text
+/plugins
+```
+
+Look for the `Gemini Obsidian Repo` marketplace and install `Obsidian Vault`.
+
+If you want to use this repository as a marketplace source from outside the repo checkout, add it explicitly:
+
+```sh
+codex plugin marketplace add /absolute/path/to/gemini-obsidian
 ```
 
 ### Gemini CLI extension
@@ -100,10 +114,10 @@ node dist/index.js obsidian_rag_index
 
 ## Host-specific assets
 
-- **Codex** uses `.codex-plugin/plugin.json`, `.mcp.json`, and the repo `skills/` directory.
+- **Codex** uses `.agents/plugins/marketplace.json` and the plugin wrapper under `plugins/gemini-obsidian/`.
 - **Gemini CLI** continues to use `gemini-extension.json`, `commands/`, and `hooks/hooks.json`.
-- **Shared behavior**: note-writing MCP tools now re-index the changed note inside the server, so post-write indexing works in both Codex and Gemini without relying on host hooks.
-- **Compatibility note**: `hooks/hooks.json` now carries a shared session-start hook using the documented common subset of Gemini and Codex hook fields, while post-write reindexing remains inside the MCP server. Codex users still need to trust plugin hooks before they run.
+- **Shared behavior**: both hosts use the same MCP server build from `dist/index.js`, and note-writing MCP tools re-index the changed note inside the server.
+- **Compatibility note**: the Codex wrapper intentionally does not bundle hooks yet. Gemini keeps `hooks/hooks.json`, while Codex relies on the in-server post-write reindex flow and avoids cross-host hook drift.
 
 ## Available Tools
 
