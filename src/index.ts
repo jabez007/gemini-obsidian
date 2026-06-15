@@ -201,23 +201,16 @@ async function reindexMovedNote(
     workspacePath?: string | null,
     vaultId?: string | null,
 ) {
-    try {
-        const result = await indexer.moveFile(
-            vaultPath,
-            sourceRelativePath,
-            destRelativePath,
-            workspacePath,
-            vaultId,
-        );
-        if (!result.success) {
-            console.error(
-                `Post-move reindex failed for ${sourceRelativePath} -> ${destRelativePath}: ${result.message ?? "unknown error"}`,
-            );
-        }
-    } catch (error) {
-        console.error(
-            `Post-move reindex failed for ${sourceRelativePath} -> ${destRelativePath}`,
-            error,
+    const result = await indexer.moveFile(
+        vaultPath,
+        sourceRelativePath,
+        destRelativePath,
+        workspacePath,
+        vaultId,
+    );
+    if (!result.success) {
+        throw new Error(
+            `Post-move reindex failed for ${sourceRelativePath} -> ${destRelativePath}: ${result.message ?? "unknown error"}`,
         );
     }
 }
