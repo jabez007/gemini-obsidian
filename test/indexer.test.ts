@@ -206,4 +206,45 @@ describe('VaultIndexer path resolution and storage', () => {
     expect(fakeTable.vectorSearch).toHaveBeenCalled();
     expect(results).toEqual([{ path: 'fallback-note.md', text: 'vector fallback result' }]);
   });
+
+  it('moveFile removes stale source chunks and reindexes the destination path', async () => {
+    const sourceRelativePath = 'old.md';
+    const destRelativePath = 'archive/new.md';
+    const sourcePath = path.join(vaultPath, sourceRelativePath);
+    const destPath = path.join(vaultPath, destRelativePath);
+    const content = 'This note is long enough to be indexed and contains a unique narwhal reference for search verification.';
+
+    await fs.writeFile(sourcePath, content, 'utf-8');
+    await indexer.indexVault(vaultPath, true, workspacePath);
+
+    await fs.mkdir(path.dirname(destPath), { recursive: true });
+    await fs.rename(sourcePath, destPath);
+
+    const moveResult = await indexer.moveFile(
+      vaultPath,
+      sourceRelativePath,
+      destRelativePath,
+      workspacePath,
+    );
+
+    expect(moveResult.success).toBe(true);
+    expect(moveResult.chunks).toBeGreaterThan(0);
+
+    const searchResults = await indexer.search('narwhal', vaultPath, 10, workspacePath);
+    const resultPaths = searchResults.map((result: any) => result.path);
+    expect(resultPaths).toContain(destRelativePath);
+    expect(resultPaths).not.toContain(sourceRelativePath);
+
+    const vaultHash = md5(path.resolve(vaultPath));
+    const hashPath = path.join(
+      workspacePath,
+      '.gemini-obsidian',
+      'vaults',
+      vaultHash,
+      'file-hashes.json',
+    );
+    const hashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
+    expect(hashes[sourceRelativePath]).toBeUndefined();
+    expect(hashes[destRelativePath]).toBe(md5(content));
+  });
 });

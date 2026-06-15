@@ -194,6 +194,34 @@ async function reindexNoteAfterWrite(
     }
 }
 
+async function reindexMovedNote(
+    vaultPath: string,
+    sourceRelativePath: string,
+    destRelativePath: string,
+    workspacePath?: string | null,
+    vaultId?: string | null,
+) {
+    try {
+        const result = await indexer.moveFile(
+            vaultPath,
+            sourceRelativePath,
+            destRelativePath,
+            workspacePath,
+            vaultId,
+        );
+        if (!result.success) {
+            console.error(
+                `Post-move reindex failed for ${sourceRelativePath} -> ${destRelativePath}: ${result.message ?? "unknown error"}`,
+            );
+        }
+    } catch (error) {
+        console.error(
+            `Post-move reindex failed for ${sourceRelativePath} -> ${destRelativePath}`,
+            error,
+        );
+    }
+}
+
 /**
  * Helper to get Obsidian Daily Note configuration
  */
@@ -460,10 +488,21 @@ async function readStdin(): Promise<string> {
                 result = JSON.stringify(extractWikilinks(content), null, 2);
             } else if (toolName === "obsidian_move_note") {
                 const vp = getVaultPath(parsedArgs.vault_path);
-                const source = getSafeFilePath(vp, String(parsedArgs.source_path));
-                const dest = getSafeFilePath(vp, String(parsedArgs.dest_path));
+                const wp = getWorkspacePath(parsedArgs.workspace_path);
+                const vid = getVaultId(parsedArgs.vault_id);
+                const sourceRelativePath = String(parsedArgs.source_path);
+                const destRelativePath = String(parsedArgs.dest_path);
+                const source = getSafeFilePath(vp, sourceRelativePath);
+                const dest = getSafeFilePath(vp, destRelativePath);
                 await fs.mkdir(path.dirname(dest), { recursive: true });
                 await fs.rename(source, dest);
+                await reindexMovedNote(
+                    vp,
+                    sourceRelativePath,
+                    destRelativePath,
+                    wp,
+                    vid,
+                );
                 result = `Moved ${parsedArgs.source_path} to ${parsedArgs.dest_path}`;
             } else if (toolName === "obsidian_update_frontmatter") {
                 const vp = getVaultPath(parsedArgs.vault_path);
@@ -916,6 +955,14 @@ async function readStdin(): Promise<string> {
                                 type: "string",
                                 description: "Optional vault path override",
                             },
+                            workspace_path: {
+                                type: "string",
+                                description: "Optional workspace path override",
+                            },
+                            vault_id: {
+                                type: "string",
+                                description: "Optional unique identifier for the vault",
+                            },
                         },
                         required: ["source_path", "dest_path"],
                     },
@@ -1302,11 +1349,22 @@ async function readStdin(): Promise<string> {
             }
             if (name === "obsidian_move_note") {
                 const vp = getVaultPath(args?.vault_path as string);
-                const source = getSafeFilePath(vp, String(args?.source_path));
-                const dest = getSafeFilePath(vp, String(args?.dest_path));
+                const wp = getWorkspacePath(args?.workspace_path as string);
+                const vid = getVaultId(args?.vault_id as string);
+                const sourceRelativePath = String(args?.source_path);
+                const destRelativePath = String(args?.dest_path);
+                const source = getSafeFilePath(vp, sourceRelativePath);
+                const dest = getSafeFilePath(vp, destRelativePath);
 
                 await fs.mkdir(path.dirname(dest), { recursive: true });
                 await fs.rename(source, dest);
+                await reindexMovedNote(
+                    vp,
+                    sourceRelativePath,
+                    destRelativePath,
+                    wp,
+                    vid,
+                );
                 return {
                     content: [
                         {
