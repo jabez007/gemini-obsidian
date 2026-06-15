@@ -173,6 +173,19 @@ export class VaultIndexer {
     await fs.rename(tmpPath, hashPath);
   }
 
+  private async deleteRowsForPaths(table: lancedb.Table, paths: string[]) {
+    const uniquePaths = [...new Set(paths)];
+    if (uniquePaths.length === 0) return;
+
+    if (uniquePaths.length === 1) {
+      await table.delete(`path = '${uniquePaths[0].replace(/'/g, "''")}'`);
+      return;
+    }
+
+    const escaped = uniquePaths.map((p) => `'${p.replace(/'/g, "''")}'`);
+    await table.delete(`path IN (${escaped.join(', ')})`);
+  }
+
   private async embedWithFallback(
     embedder: Embedder,
     texts: string[],
@@ -258,7 +271,7 @@ export class VaultIndexer {
               } else {
                   await this.ensureFtsIndex(table);
                   // Delete old chunks for this file
-                  await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+                  await this.deleteRowsForPaths(table, [normalizedPath]);
                   await table.add(chunkRows);
               }
           }
@@ -272,7 +285,7 @@ export class VaultIndexer {
           // No chunks: Remove from DB and hashes
           if (tableNames.includes('notes')) {
               const table = await db.openTable('notes');
-              await table.delete(`path = '${normalizedPath.replace(/'/g, "''")}'`);
+              await this.deleteRowsForPaths(table, [normalizedPath]);
               await table.optimize();
           }
           delete hashes[normalizedPath];
@@ -452,8 +465,7 @@ export class VaultIndexer {
           const DELETE_BATCH = 100;
           for (let i = 0; i < pathsToDelete.length; i += DELETE_BATCH) {
             const batch = pathsToDelete.slice(i, i + DELETE_BATCH);
-            const escaped = batch.map(p => `'${p.replace(/'/g, "''")}'`);
-            await table.delete(`path IN (${escaped.join(', ')})`);
+            await this.deleteRowsForPaths(table, batch);
           }
         }
         tableInitialized = true;
@@ -579,6 +591,100 @@ export class VaultIndexer {
         console.error(`Indexed ${indexedChunks} chunks.`);
       }
       return { success: true, chunks: indexedChunks };
+    } finally {
+      release();
+    }
+  }
+
+  public async moveFile(
+    vaultPath: string,
+    sourceRelativePath: string,
+    destRelativePath: string,
+    workspacePath?: string | null,
+    vaultId?: string | null,
+  ): Promise<IndexResult> {
+    const release = await this.acquireLock();
+    try {
+      const sourcePath = this.validatePath(sourceRelativePath);
+      const destPath = this.validatePath(destRelativePath);
+      const { hashPath } = await this.getPaths(vaultPath, workspacePath, vaultId);
+      const embedder = Embedder.getInstance();
+      const filePath = getSafeFilePath(vaultPath, destRelativePath);
+
+      const content = await fs.readFile(filePath, 'utf-8');
+      const contentHash = md5(content);
+      const { content: body, data: metadata } = matter(content);
+
+      const chunkingOptions = chunkingOptionsFromEnv();
+      chunkingOptions.graphMetadata = {
+        entities: normalizeToStringArray(metadata.entities),
+        communities: normalizeToStringArray(metadata.communities)
+      };
+
+      const { textsToEmbed, chunkMetadata } = buildEmbeddingInputs(destPath, body, chunkingOptions);
+      const pathsToDelete = sourcePath === destPath ? [destPath] : [sourcePath, destPath];
+
+      let hashes: Record<string, string> = {};
+      try {
+        hashes = JSON.parse(await fs.readFile(hashPath, 'utf-8'));
+      } catch { /* ignore */ }
+
+      const db = await this.getDb(vaultPath, workspacePath, vaultId);
+      const tableNames = await db.tableNames();
+      const hasTable = tableNames.includes('notes');
+
+      if (textsToEmbed.length === 0) {
+        if (hasTable) {
+          const table = await db.openTable('notes');
+          await this.deleteRowsForPaths(table, pathsToDelete);
+          await table.optimize();
+        }
+        delete hashes[sourcePath];
+        hashes[destPath] = contentHash;
+        await this.writeHashesAtomic(hashPath, hashes);
+        return { success: true, chunks: 0, message: 'Moved file has no embeddable content.' };
+      }
+
+      const chunks = await this.embedWithFallback(embedder, textsToEmbed, chunkMetadata);
+      if (chunks.length === 0) {
+        return { success: false, message: `Failed to embed content for ${destRelativePath}.` };
+      }
+
+      const chunkRows = chunks as unknown as Record<string, unknown>[];
+      let table: lancedb.Table;
+
+      if (!hasTable) {
+        table = await db.createTable('notes', chunkRows);
+        await this.ensureFtsIndex(table);
+      } else {
+        table = await db.openTable('notes');
+        const schema = await table.schema();
+        const hasEntities = schema.fields.some(f => f.name === 'entities');
+
+        if (!hasEntities) {
+          console.error("Schema mismatch detected (missing 'entities'). Recreating table...");
+          await db.dropTable('notes');
+          table = await db.createTable('notes', chunkRows);
+          await this.ensureFtsIndex(table);
+        } else {
+          await this.ensureFtsIndex(table);
+          await this.deleteRowsForPaths(table, [destPath]);
+          await table.add(chunkRows);
+          if (sourcePath !== destPath) {
+            await this.deleteRowsForPaths(table, [sourcePath]);
+          }
+        }
+      }
+
+      await table.optimize();
+      delete hashes[sourcePath];
+      hashes[destPath] = contentHash;
+      await this.writeHashesAtomic(hashPath, hashes);
+      console.error(`Moved index entry from ${sourceRelativePath} to ${destRelativePath} (${chunks.length} chunks).`);
+      return { success: true, chunks: chunks.length };
+    } catch (err) {
+      console.error(`Failed to move indexed file ${sourceRelativePath} to ${destRelativePath}:`, err);
+      return { success: false, message: String(err) };
     } finally {
       release();
     }
